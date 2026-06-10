@@ -4,37 +4,26 @@ Guidance for Claude Code working in this repository.
 
 ## Changelog discipline
 
-`mission-docs/changelog.md` is the canonical log of how this project was
-built — prompt by prompt. **For every functional change, append an entry in
-the same response that makes the change.** Don't batch and don't defer.
+`mission-docs/changelog.md` logs functional changes. **Append an entry in the
+same response that makes the change.** Newest on top.
 
-An entry must capture:
-1. **Date** — today's date in `YYYY-MM-DD` (top of the entry).
-2. **Title** — one-line summary.
-3. **Request** — what the user asked for, in their own framing (paraphrase
-   is fine; keep the intent and any constraints they specified). If the
-   request mentions a tradeoff they chose, include it.
-4. **Changes** — what was actually built, at a level that's useful months
-   later. Mention new files/folders, new dependencies, new endpoints, schema
-   changes, and any non-obvious decisions.
+**Keep entries bare-bones.** Format:
 
-Newest entries go at the top.
+```
+## YYYY-MM-DD — One-line title
+**Request:** one sentence on what the user asked.
+**Changes:** 1–3 bullets on what shipped.
+```
 
-**Log:** new features or sub-features, new flows, new endpoints, schema
-changes, new dependencies, removed/deprecated surface, architectural
-decisions (auth model, transport, hosting, etc.).
+No long prose, no exhaustive file lists. If you can't say it in a few lines,
+you're saying too much.
 
-**Skip:** pure styling / copy tweaks, refactors that preserve behavior, bug
-fixes with no user-visible behavior change, dependency bumps that don't
-change behavior.
+**Log:** new features, flows, endpoints, schema/dep changes, removed surface,
+architectural decisions. **Skip:** styling, copy, behavior-preserving
+refactors, invisible bug fixes, no-op dep bumps.
 
-If you're unsure whether a change qualifies, log it — the cost of an extra
-entry is near-zero; the cost of a missing one is losing the project's
-history.
-
-The high-level mission and objective live in `mission-docs/mission.md`.
-Keep that file in sync when the product direction shifts (new primary user,
-new core job-to-be-done, scope changes).
+Mission lives in `mission-docs/mission.md` — update when product direction
+shifts.
 
 ## Repo Layout
 
