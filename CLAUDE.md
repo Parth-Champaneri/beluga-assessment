@@ -2,6 +2,40 @@
 
 Guidance for Claude Code working in this repository.
 
+## Changelog discipline
+
+`mission-docs/changelog.md` is the canonical log of how this project was
+built — prompt by prompt. **For every functional change, append an entry in
+the same response that makes the change.** Don't batch and don't defer.
+
+An entry must capture:
+1. **Date** — today's date in `YYYY-MM-DD` (top of the entry).
+2. **Title** — one-line summary.
+3. **Request** — what the user asked for, in their own framing (paraphrase
+   is fine; keep the intent and any constraints they specified). If the
+   request mentions a tradeoff they chose, include it.
+4. **Changes** — what was actually built, at a level that's useful months
+   later. Mention new files/folders, new dependencies, new endpoints, schema
+   changes, and any non-obvious decisions.
+
+Newest entries go at the top.
+
+**Log:** new features or sub-features, new flows, new endpoints, schema
+changes, new dependencies, removed/deprecated surface, architectural
+decisions (auth model, transport, hosting, etc.).
+
+**Skip:** pure styling / copy tweaks, refactors that preserve behavior, bug
+fixes with no user-visible behavior change, dependency bumps that don't
+change behavior.
+
+If you're unsure whether a change qualifies, log it — the cost of an extra
+entry is near-zero; the cost of a missing one is losing the project's
+history.
+
+The high-level mission and objective live in `mission-docs/mission.md`.
+Keep that file in sync when the product direction shifts (new primary user,
+new core job-to-be-done, scope changes).
+
 ## Repo Layout
 
 Two independent npm projects in `frontend/` and `backend/`, run side-by-side.
