@@ -5,6 +5,13 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — Snapshot slice-1 plan into mission-docs
+**Request:** Drop the approved plan that drove steps 1–4 into the repo so it's part of the project record.
+**Changes:**
+- Added `mission-docs/plans/2026-06-12-slice-1-clay-enrichment.md`.
+
+---
+
 ## 2026-06-12 — Clay dispatch + webhook callback + Enrich button
 **Request:** Step 4 — send pending candidates to Clay, receive the enriched row back, persist it; Enrich button in the UI.
 **Changes:**
