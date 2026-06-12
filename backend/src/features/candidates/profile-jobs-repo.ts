@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/index.js";
-import { candidates, profileJobs, type ProfileJob } from "./schema.js";
+import { profileJobs, type ProfileJob } from "./schema.js";
 
 /**
  * Insert a fresh `queued` profile job row for a candidate if one doesn't
