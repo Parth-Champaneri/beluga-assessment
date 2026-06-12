@@ -5,6 +5,14 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — Switch runtime DB driver from `@neondatabase/serverless` to `pg`
+**Request:** Runtime queries failed with "All attempts to open a WebSocket… fetch failed". Use drizzle out of the box.
+**Changes:**
+- `db/index.ts` now uses `pg.Pool` + `drizzle-orm/node-postgres` (plain TCP) — same path drizzle-kit's migrate already used successfully. Removed `@neondatabase/serverless` dep, added `pg` + `@types/pg`.
+- CLAUDE.md updated to reflect the driver.
+
+---
+
 ## 2026-06-12 — Env loading + use drizzle-kit's built-in migrate
 **Request:** `npm run db:migrate` failed — `tsx` didn't load `.env`, and the custom migrate script duplicates what drizzle-kit ships.
 **Changes:**
