@@ -4,9 +4,10 @@ import { db } from "../../db/index.js";
 import { env } from "../../lib/env.js";
 import * as service from "./service.js";
 
-const bodySchema = z
-  .object({ candidate_id: z.string().uuid() })
-  .passthrough();
+const bodySchema = z.object({
+  candidate_id: z.string().uuid(),
+  enrichment_json: z.unknown(),
+});
 
 export const clayCallbackRouter: Router = Router();
 
@@ -25,13 +26,13 @@ clayCallbackRouter.post("/api/webhooks/clay", json(), async (req, res) => {
     res.status(400).json({ ok: false, error: parsed.error.message });
     return;
   }
-  const { candidate_id, ...payload } = parsed.data;
-  const summary = summarizeEnrichment(payload);
+  const { candidate_id, enrichment_json } = parsed.data;
+  const summary = summarizeEnrichment(enrichment_json);
   try {
     const updated = await service.applyCallback(
       { db },
       candidate_id,
-      payload,
+      enrichment_json,
     );
     if (!updated) {
       console.warn(
@@ -53,10 +54,14 @@ clayCallbackRouter.post("/api/webhooks/clay", json(), async (req, res) => {
   }
 });
 
-function summarizeEnrichment(payload: Record<string, unknown>): string {
+function summarizeEnrichment(payload: unknown): string {
+  if (!payload || typeof payload !== "object") {
+    return `(non-object enrichment_json: ${typeof payload})`;
+  }
+  const obj = payload as Record<string, unknown>;
   const headline =
-    typeof payload.headline === "string" ? payload.headline.slice(0, 60) : null;
-  const keys = Object.keys(payload).length;
+    typeof obj.headline === "string" ? obj.headline.slice(0, 60) : null;
+  const keys = Object.keys(obj).length;
   return headline
     ? `headline="${headline}" (${keys} fields)`
     : `(${keys} fields, no headline)`;

@@ -5,6 +5,15 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — Callback contract: wrap enrichment in `enrichment_json`
+**Request:** Cleaner shape — Clay sends `{ candidate_id, enrichment_json: {...} }` instead of spreading enrichment fields at the top level; backend stores `enrichment_json` verbatim.
+**Changes:**
+- `callback.ts` zod schema now requires `candidate_id` + `enrichment_json` (`z.unknown()`); the rest of the body is ignored. Stored as the candidate's `enrichment` jsonb unchanged.
+- `summarizeEnrichment` log helper reads `headline` from inside `enrichment_json`.
+- README Clay-setup section updated to the new body shape.
+
+---
+
 ## 2026-06-12 — Enrichment observability
 **Request:** Easier to tell whether a Clay enrichment worked — proper logs and surface per-candidate failures.
 **Changes:**
