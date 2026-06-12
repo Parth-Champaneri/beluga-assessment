@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { Context } from "../../trpc/context.js";
 import * as repo from "./repo.js";
 import * as jobsRepo from "./jobs-repo.js";
+import * as profileJobsRepo from "./profile-jobs-repo.js";
 import { candidates, type NewCandidate } from "./schema.js";
 
 export type IngestRowError = { row: number; reason: string };
@@ -149,6 +150,11 @@ export async function applyCallback(
       const created = await jobsRepo.getJob(txDb, candidateId);
       if (created) await jobsRepo.markDone(txDb, created.id);
     }
+
+    // Enqueue the follow-on profile extraction in the same tx. Idempotent
+    // via UNIQUE(candidate_id); a re-delivered callback won't double-queue.
+    await profileJobsRepo.ensureJobForCandidate(txDb, candidateId);
+
     return true;
   });
 }
