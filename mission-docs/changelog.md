@@ -5,6 +5,15 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — Enrichment observability
+**Request:** Easier to tell whether a Clay enrichment worked — proper logs and surface per-candidate failures.
+**Changes:**
+- `candidates.last_dispatch_error` text column (migration `0001_funny_scarlet_spider.sql`); cleared on successful re-send, set on failure.
+- Backend logs at every edge: `[enrich] → sending`/`✓ sent`/`✗ failed`, `[clay] → ack ...ms`/`✗ HTTP ...`/`✗ network`, `[clay-callback] ← received candidate=... headline="..."`/`401 bad secret`/`404 unknown`/`500 error`.
+- UI: failure list under the Enrich button (first 5 + overflow); ⚠ on rows whose last dispatch failed, with full error shown in the expanded row.
+
+---
+
 ## 2026-06-12 — Switch runtime DB driver from `@neondatabase/serverless` to `pg`
 **Request:** Runtime queries failed with "All attempts to open a WebSocket… fetch failed". Use drizzle out of the box.
 **Changes:**

@@ -51,6 +51,7 @@ export function CandidatesTable() {
 
   const pendingCount =
     candidates.data?.filter((c) => c.status === "pending").length ?? 0;
+  const failedDispatches = enrich.data?.failed ?? [];
 
   return (
     <Card>
@@ -60,14 +61,27 @@ export function CandidatesTable() {
           {enrich.data && (
             <p className="text-xs text-muted-foreground">
               dispatched {enrich.data.dispatched}
-              {enrich.data.failed.length > 0 &&
-                `, ${enrich.data.failed.length} failed`}
+              {failedDispatches.length > 0 &&
+                `, ${failedDispatches.length} failed`}
             </p>
           )}
           {enrich.error && (
             <p className="text-xs text-red-600">
               error: {enrich.error.message}
             </p>
+          )}
+          {failedDispatches.length > 0 && (
+            <ul className="text-xs text-red-600 list-disc pl-4 max-w-md">
+              {failedDispatches.slice(0, 5).map((f) => (
+                <li key={f.candidateId} className="truncate">
+                  <span className="font-mono">{f.candidateId.slice(0, 8)}</span>
+                  : {f.reason}
+                </li>
+              ))}
+              {failedDispatches.length > 5 && (
+                <li>… {failedDispatches.length - 5} more</li>
+              )}
+            </ul>
           )}
         </div>
         <Button
@@ -131,9 +145,20 @@ export function CandidatesTable() {
                         {c.email ?? "—"}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={statusVariant[c.status as Status]}>
-                          {c.status}
-                        </Badge>
+                        <div className="flex items-center gap-1">
+                          <Badge variant={statusVariant[c.status as Status]}>
+                            {c.status}
+                          </Badge>
+                          {c.lastDispatchError && (
+                            <span
+                              title={c.lastDispatchError}
+                              className="text-red-600"
+                              aria-label="last dispatch error"
+                            >
+                              ⚠
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="max-w-[260px] truncate text-muted-foreground">
                         {enrichment?.headline ?? "—"}
@@ -142,6 +167,14 @@ export function CandidatesTable() {
                     {isOpen && (
                       <TableRow key={`${c.id}-expanded`}>
                         <TableCell colSpan={5}>
+                          {c.lastDispatchError && (
+                            <div className="mb-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+                              <span className="font-medium">
+                                last dispatch error:
+                              </span>{" "}
+                              {c.lastDispatchError}
+                            </div>
+                          )}
                           <pre className="max-h-72 overflow-auto rounded bg-muted p-3 text-xs">
                             {enrichment
                               ? JSON.stringify(enrichment, null, 2)

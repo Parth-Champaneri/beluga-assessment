@@ -12,6 +12,7 @@ export const candidates = pgTable("candidates", {
     .notNull()
     .default("pending"),
   enrichment: jsonb("enrichment"),
+  lastDispatchError: text("last_dispatch_error"),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   enrichedAt: timestamp("enriched_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })

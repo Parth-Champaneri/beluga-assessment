@@ -87,7 +87,11 @@ export async function enrichAll(ctx: Context): Promise<EnrichResult> {
   const failed: EnrichResult["failed"] = [];
   let dispatched = 0;
 
+  console.log(`[enrich] dispatching ${pending.length} candidate(s) to Clay`);
   for (const c of pending) {
+    console.log(
+      `[enrich] → sending candidate=${c.id} name="${c.fullName}" url=${c.linkedinUrl}`,
+    );
     try {
       await dispatchToClay({
         candidate_id: c.id,
@@ -97,14 +101,18 @@ export async function enrichAll(ctx: Context): Promise<EnrichResult> {
       });
       await repo.markSent(ctx.db, c.id);
       dispatched++;
+      console.log(`[enrich] ✓ sent candidate=${c.id}`);
     } catch (err) {
-      failed.push({
-        candidateId: c.id,
-        reason: err instanceof Error ? err.message : String(err),
-      });
+      const reason = err instanceof Error ? err.message : String(err);
+      await repo.markDispatchError(ctx.db, c.id, reason);
+      failed.push({ candidateId: c.id, reason });
+      console.error(`[enrich] ✗ failed candidate=${c.id} reason=${reason}`);
     }
     await new Promise((r) => setTimeout(r, 300));
   }
+  console.log(
+    `[enrich] done — dispatched=${dispatched} failed=${failed.length}`,
+  );
   return { dispatched, failed };
 }
 

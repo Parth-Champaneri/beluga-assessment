@@ -17,7 +17,18 @@ export async function listPending(db: Db): Promise<Candidate[]> {
 export async function markSent(db: Db, id: string): Promise<void> {
   await db
     .update(candidates)
-    .set({ status: "sent", sentAt: new Date() })
+    .set({ status: "sent", sentAt: new Date(), lastDispatchError: null })
+    .where(eq(candidates.id, id));
+}
+
+export async function markDispatchError(
+  db: Db,
+  id: string,
+  error: string,
+): Promise<void> {
+  await db
+    .update(candidates)
+    .set({ lastDispatchError: error })
     .where(eq(candidates.id, id));
 }
 

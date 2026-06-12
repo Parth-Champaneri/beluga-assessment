@@ -1,0 +1,1 @@
+ALTER TABLE "candidates" ADD COLUMN "last_dispatch_error" text;
