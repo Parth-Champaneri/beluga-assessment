@@ -1,8 +1,8 @@
 import { router } from "./trpc.js";
-import { exampleRouter } from "../features/example/router.js";
+import { candidatesRouter } from "../features/candidates/router.js";
 
 export const appRouter = router({
-  example: exampleRouter,
+  candidates: candidatesRouter,
 });
 
 export type AppRouter = typeof appRouter;

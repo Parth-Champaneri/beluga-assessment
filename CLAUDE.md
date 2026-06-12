@@ -33,7 +33,7 @@ There is no root `package.json` — install/run each side separately.
 - `frontend/` — Vite + React 19, TypeScript, Tailwind v4, Shadcn/ui, tRPC v11
   client + TanStack Query. Port **5173**.
 - `backend/` — Express + TypeScript (ESM, `tsx` in dev), tRPC v11, Drizzle ORM
-  on Neon serverless Postgres. Port **4000**.
+  on Postgres via `pg` (node-postgres). Port **4000**. Hosted on Neon.
 
 ## Common Commands
 
@@ -78,8 +78,9 @@ uploads, health checks, third-party webhooks). Route registration lives in
 ### Database
 
 `backend/src/db/index.ts` exports:
-- `ownerPool` — `@neondatabase/serverless` `Pool` against `DATABASE_URL`.
-- `db` — drizzle on `ownerPool`. App-table reads/writes go here.
+- `ownerPool` — `pg.Pool` (node-postgres, TCP) against `DATABASE_URL`.
+- `db` — drizzle on `ownerPool` via `drizzle-orm/node-postgres`. App-table
+  reads/writes go here.
 
 The tRPC context (`src/trpc/context.ts`) injects `db` into every procedure as
 `ctx.db`. Service code should accept `ctx` and pass `ctx.db` down to the
