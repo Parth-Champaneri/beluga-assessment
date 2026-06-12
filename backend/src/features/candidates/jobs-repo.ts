@@ -35,25 +35,47 @@ export async function getJob(
  * Uses `FOR UPDATE SKIP LOCKED` so concurrent ticks/workers can never pick
  * the same row.
  */
-export async function claimNextDue(db: Db): Promise<EnrichmentJob | null> {
+/**
+ * Atomically claim up to `limit` due jobs and flip them to `dispatched`.
+ * Returns the claimed rows (with updated fields) — empty array if nothing
+ * is due. The dispatcher fans these out in parallel via Promise.allSettled.
+ *
+ * `FOR UPDATE SKIP LOCKED` makes concurrent ticks/workers safe.
+ */
+export async function claimDueBatch(
+  db: Db,
+  limit: number,
+): Promise<EnrichmentJob[]> {
+  // Raw SQL returns snake_case keys; alias them so the shape matches the
+  // drizzle-inferred EnrichmentJob (camelCase). Without this, callers see
+  // `claimed.candidateId === undefined` etc.
   const result = await db.execute<EnrichmentJob>(sql`
     UPDATE enrichment_jobs
        SET status          = 'dispatched',
            attempt_count   = attempt_count + 1,
            last_attempt_at = now(),
            dispatched_at   = now()
-     WHERE id = (
+     WHERE id IN (
        SELECT id FROM enrichment_jobs
         WHERE status = 'queued'
           AND next_attempt_at <= now()
         ORDER BY next_attempt_at
-        LIMIT 1
+        LIMIT ${limit}
         FOR UPDATE SKIP LOCKED
      )
-     RETURNING *;
+     RETURNING id,
+               candidate_id        AS "candidateId",
+               status,
+               attempt_count       AS "attemptCount",
+               next_attempt_at     AS "nextAttemptAt",
+               last_attempt_at     AS "lastAttemptAt",
+               dispatched_at       AS "dispatchedAt",
+               completed_at        AS "completedAt",
+               last_error_code     AS "lastErrorCode",
+               last_error_message  AS "lastErrorMessage",
+               created_at          AS "createdAt";
   `);
-  const row = (result.rows as EnrichmentJob[])[0];
-  return row ?? null;
+  return result.rows as EnrichmentJob[];
 }
 
 /**
@@ -65,10 +87,13 @@ export async function revertToQueued(
   jobId: string,
   opts: { code: string; message: string; delaySeconds: number },
 ): Promise<void> {
+  // `(numeric || text)::interval` errors in recent PG ("operator does not
+  // exist: numeric || unknown"). Multiply a literal interval instead — works
+  // for fractional seconds too.
   await db.execute(sql`
     UPDATE enrichment_jobs
        SET status             = 'queued',
-           next_attempt_at    = now() + (${opts.delaySeconds} || ' seconds')::interval,
+           next_attempt_at    = now() + (${opts.delaySeconds} * interval '1 second'),
            last_error_code    = ${opts.code},
            last_error_message = ${opts.message}
      WHERE id = ${jobId};
@@ -178,7 +203,7 @@ export async function sweepStuckDispatched(
            last_error_message = 'Clay did not call back within '
                               || ${opts.callbackTimeoutSeconds} || 's'
      WHERE status = 'dispatched'
-       AND dispatched_at < now() - (${opts.callbackTimeoutSeconds} || ' seconds')::interval
+       AND dispatched_at < now() - (${opts.callbackTimeoutSeconds} * interval '1 second')
      RETURNING id;
   `);
   return result.rows.length;

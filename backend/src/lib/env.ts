@@ -13,6 +13,7 @@ const schema = z.object({
   ENRICH_MAX_ATTEMPTS: z.coerce.number().default(5),
   ENRICH_WORKER_INTERVAL_MS: z.coerce.number().default(3000),
   ENRICH_CALLBACK_TIMEOUT_SECONDS: z.coerce.number().default(900),
+  ENRICH_DISPATCH_CONCURRENCY: z.coerce.number().int().positive().default(20),
 });
 
 export const env = schema.parse(process.env);

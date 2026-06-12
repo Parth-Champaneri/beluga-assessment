@@ -2,7 +2,7 @@ import type { Db } from "../../db/index.js";
 import { env } from "../../lib/env.js";
 import * as jobsRepo from "./jobs-repo.js";
 import * as candidatesRepo from "./repo.js";
-import { candidates } from "./schema.js";
+import { candidates, type EnrichmentJob } from "./schema.js";
 import { eq } from "drizzle-orm";
 import { dispatchToClay } from "./clay.js";
 
@@ -39,8 +39,9 @@ export async function sweeperPass(db: Db): Promise<void> {
 }
 
 /**
- * Dispatcher pass. Claims one due job, POSTs to Clay, branches on the
- * typed DispatchResult to mark dispatched / failed / re-queued.
+ * Dispatcher pass. Claims up to ENRICH_DISPATCH_CONCURRENCY due jobs and
+ * fans them out in parallel via Promise.allSettled. Each per-job result is
+ * handled independently (mark dispatched / failed / re-queued).
  */
 export async function dispatcherPass(db: Db): Promise<void> {
   // 0. Rate-limit gate. Skip the tick entirely if a recent 429 is still
@@ -49,12 +50,29 @@ export async function dispatcherPass(db: Db): Promise<void> {
     return;
   }
 
-  // 1. Atomic claim — flips one queued+due row to dispatched, bumps
-  //    attempt_count.
-  const claimed = await jobsRepo.claimNextDue(db);
-  if (!claimed) return;
+  // 1. Atomic batch claim — flips up to N queued+due rows to dispatched and
+  //    bumps their attempt_count. Concurrent ticks/workers are safe via
+  //    `FOR UPDATE SKIP LOCKED`.
+  const claimed = await jobsRepo.claimDueBatch(
+    db,
+    env.ENRICH_DISPATCH_CONCURRENCY,
+  );
+  if (claimed.length === 0) return;
 
-  // 2. Read the candidate row (the dispatcher needs name/url/email).
+  console.log(`[dispatcher] claimed ${claimed.length} job(s) for dispatch`);
+
+  // 2. Fan out in parallel. allSettled isolates per-job failures so one
+  //    exception can't drop the rest of the batch.
+  await Promise.allSettled(claimed.map((job) => dispatchOne(db, job)));
+}
+
+/**
+ * Per-job dispatch: read candidate, POST to Clay, branch on the typed
+ * DispatchResult. Pulled out of the loop body so the batch fan-out reads
+ * cleanly.
+ */
+async function dispatchOne(db: Db, claimed: EnrichmentJob): Promise<void> {
+  // Read the candidate row (the dispatcher needs name/url/email).
   const candidateRows = await db
     .select({
       id: candidates.id,
@@ -75,7 +93,7 @@ export async function dispatcherPass(db: Db): Promise<void> {
     return;
   }
 
-  // 3. Fire the POST.
+  // Fire the POST.
   const result = await dispatchToClay({
     candidate_id: candidate.id,
     full_name: candidate.fullName,
@@ -83,7 +101,7 @@ export async function dispatcherPass(db: Db): Promise<void> {
     email: candidate.email,
   });
 
-  // 4. Branch on the result. Dispatcher's job ends here either way.
+  // Branch on the result. Dispatcher's job ends here either way.
   if (result.ok) {
     console.log(`[dispatcher] ✓ dispatched candidate=${candidate.id}`);
     return;
@@ -116,13 +134,12 @@ export async function dispatcherPass(db: Db): Promise<void> {
   }
 
   // 429 → honor Retry-After AND set the global gate so other ticks pause.
+  // Other in-flight dispatches in this batch continue; the gate only blocks
+  // the NEXT tick from claiming new ones.
   if (result.code === "http_429") {
     const retryAfter = result.retryAfterSeconds ?? 30;
     rateLimitGateUntil = Date.now() + retryAfter * 1000;
-    const delaySeconds = Math.max(
-      retryAfter,
-      backoff(claimed.attemptCount),
-    );
+    const delaySeconds = Math.max(retryAfter, backoff(claimed.attemptCount));
     await jobsRepo.revertToQueued(db, claimed.id, {
       code: result.code,
       message: result.message,
@@ -183,7 +200,7 @@ export function startEnrichmentWorker({ db }: { db: Db }): {
   }, 0);
 
   console.log(
-    `[worker] started — interval=${env.ENRICH_WORKER_INTERVAL_MS}ms maxAttempts=${env.ENRICH_MAX_ATTEMPTS}`,
+    `[worker] started — interval=${env.ENRICH_WORKER_INTERVAL_MS}ms concurrency=${env.ENRICH_DISPATCH_CONCURRENCY} maxAttempts=${env.ENRICH_MAX_ATTEMPTS}`,
   );
 
   return {

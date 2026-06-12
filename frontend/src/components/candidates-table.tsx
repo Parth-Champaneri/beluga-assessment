@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EnrichmentInfoModal } from "@/components/enrichment-info-modal";
 
 // Mirrors backend `enrichmentJobStatuses`. `null` happens transiently if a
 // candidate row exists without its job row (shouldn't, but be safe).
@@ -117,6 +118,7 @@ export function CandidatesTable() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <EnrichmentInfoModal />
           <Button
             onClick={() => nudge.mutate()}
             disabled={anyMutating || queuedCount === 0}
