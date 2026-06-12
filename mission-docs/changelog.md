@@ -5,6 +5,15 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — Candidates schema + first migration
+**Request:** Step 1 of the Clay enrichment slice — candidates table, drop the example feature.
+**Changes:**
+- Added `features/candidates/` with `schema.ts` (id, full_name, linkedin_url unique, email, status, enrichment jsonb, sent_at, enriched_at, created_at).
+- Deleted `features/example/`; `appRouter` now empty. Generated first migration in `drizzle/`.
+- Pointed `drizzle.config.ts` `schema` at the `features/*/schema.ts` glob so drizzle-kit doesn't trip on ESM `.js` extensions in the barrel.
+
+---
+
 ## 2026-06-10 — Slim down changelog format
 **Request:** Make the changelog and its CLAUDE.md rule much more concise; simplify existing entries and tell future entries to stay simple.
 **Changes:**
