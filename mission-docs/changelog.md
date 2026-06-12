@@ -5,6 +5,15 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — slice-2 docs (plan snapshot + README resilience)
+**Request:** Land slice-2 documentation so the pg-boss decision and new env vars survive.
+**Changes:**
+- mission-docs/plans/2026-06-12-slice-2-resilient-enrichment.md — plan snapshot.
+- CLAUDE.md Features: dispatcher + sweeper + receiver model for slice 2.
+- README: Resilience section (pg-boss eval + cut threshold, env vars, "with another week").
+
+---
+
 ## 2026-06-12 — resilient worker + mock Clay + retry UI (slice-2)
 **Request:** Slice-2 hardening — retries, timeouts, rate limits, idempotency, DLQ.
 **Changes:**

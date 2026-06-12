@@ -147,3 +147,42 @@ changed visibility/auth model, removed surface), update the matching
 subsection below in the same PR. Small fixes and refactors don't need an
 edit. If a feature listed here is removed, delete its subsection rather than
 leaving a stale entry.
+
+### Slice 2 — Resilient Clay enrichment
+
+`enrichment_jobs` (one row per candidate, `UNIQUE(candidate_id)`) is the
+queue — no external queue library. The state machine is
+`queued → dispatched → done | failed`. Three concerns share one feature
+folder (`features/candidates/`):
+
+- **Dispatcher** (`worker.ts:dispatcherPass`) — every 3s tick, atomically
+  claims one due `queued` row via `UPDATE … FOR UPDATE SKIP LOCKED`, POSTs to
+  Clay with `AbortController` timeout, and is **fire-and-forget at 2xx**
+  (leaves the row `dispatched`, awaiting Clay's callback). Errors get typed
+  codes (`network` / `timeout` / `http_429` / `http_5xx` / `http_4xx` /
+  `config`); transient ones go back to `queued` with exp backoff
+  (`[5s, 30s, 2m, 10m, 1h]` ±20% jitter) until `ENRICH_MAX_ATTEMPTS`, then
+  `failed`. 429 honors `Retry-After` and sets an in-memory global gate that
+  pauses subsequent dispatches.
+- **Sweeper** (`worker.ts:sweeperPass`) — same tick. One SQL `UPDATE` finds
+  `dispatched` rows older than `ENRICH_CALLBACK_TIMEOUT_SECONDS` and either
+  re-queues (if budget remains) or marks `failed`. This is the safety net for
+  callbacks that never arrive.
+- **Receiver** (`callback.ts`, `POST /api/webhooks/clay`) — already in place
+  from slice 1. Verifies `x-callback-secret`, matches by normalized
+  `linkedin_url`, writes enrichment, flips the job to `done` in one tx. Late
+  callback on a `failed` row is accepted and logged loudly.
+
+A `CLAY_MOCK_MODE` env-gated provider (`clay-mock.ts`) deterministically
+exercises every bucket (200 / 429 / 500 / never-respond) via a hash of
+`candidate_id` so failure modes can be demoed without burning Clay credits.
+
+Frontend (`candidates-table.tsx`) shows the `failed` badge, attempt counts,
+next-retry time, and a "Retry failed (N)" button.
+
+**Env vars** (all optional, defaults shown):
+- `CLAY_MOCK_MODE` — any truthy value routes dispatch to `clay-mock.ts`.
+- `ENRICH_MAX_ATTEMPTS=5`
+- `ENRICH_CALLBACK_TIMEOUT_SECONDS=900` — sweeper threshold.
+- `ENRICH_WORKER_INTERVAL_MS=3000` — worker tick interval.
+- `ENRICH_DISPATCH_TIMEOUT_MS=30000` — `AbortController` timeout on the POST.
