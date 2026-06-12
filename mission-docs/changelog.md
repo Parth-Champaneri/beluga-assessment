@@ -5,6 +5,14 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — Env loading + use drizzle-kit's built-in migrate
+**Request:** `npm run db:migrate` failed — `tsx` didn't load `.env`, and the custom migrate script duplicates what drizzle-kit ships.
+**Changes:**
+- `dev`/`start`/`db:migrate` pass `--env-file=.env` (Node 20 native); `drizzle.config.ts` calls `process.loadEnvFile()` for `db:generate`/`db:studio`.
+- Replaced `src/db/migrate.ts` + `tsx` script with `drizzle-kit migrate`. README quickstart unchanged (`npm run db:migrate` still works).
+
+---
+
 ## 2026-06-12 — Snapshot slice-1 plan into mission-docs
 **Request:** Drop the approved plan that drove steps 1–4 into the repo so it's part of the project record.
 **Changes:**
