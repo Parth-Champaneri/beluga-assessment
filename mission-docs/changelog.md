@@ -5,6 +5,14 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — enrichment_jobs table + state refactor (slice-2 prep)
+**Request:** Slice-2 prep — extract dispatch lifecycle from candidates into a jobs table.
+**Changes:**
+- New enrichment_jobs table (queued | dispatched | done | failed) with attempt_count, next_attempt_at, dispatched_at, last_error_*. candidates slimmed to person + enrichment.
+- Repo/service refactor: list / upsert / enrichAll / applyCallback flow through jobs-repo; frontend gets a merged row shape via the existing list query. Sync dispatch loop preserved — worker lands in slice-2 Phase B.
+
+---
+
 ## 2026-06-12 — Match callbacks by `linkedin_url` instead of `candidate_id`
 **Request:** Stop wrestling with UUID chips in the Clay body — match on linkedin_url (unique already).
 **Changes:**

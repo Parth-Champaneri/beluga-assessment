@@ -15,6 +15,13 @@
       "when": 1781282392435,
       "tag": "0001_funny_scarlet_spider",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781299897166,
+      "tag": "0002_sloppy_the_captain",
+      "breakpoints": true
     }
   ]
 }

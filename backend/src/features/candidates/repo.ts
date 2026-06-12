@@ -1,52 +1,62 @@
 import { desc, eq, sql } from "drizzle-orm";
 import type { Db } from "../../db/index.js";
-import { candidates, type NewCandidate, type Candidate } from "./schema.js";
+import {
+  candidates,
+  enrichmentJobs,
+  type NewCandidate,
+  type Candidate,
+  type EnrichmentJobStatus,
+} from "./schema.js";
+import * as jobsRepo from "./jobs-repo.js";
 
-export async function listCandidates(db: Db): Promise<Candidate[]> {
-  return db.select().from(candidates).orderBy(desc(candidates.createdAt));
-}
+export type CandidateListRow = Candidate & {
+  status: EnrichmentJobStatus | null;
+  attemptCount: number | null;
+  nextAttemptAt: Date | null;
+  lastAttemptAt: Date | null;
+  dispatchedAt: Date | null;
+  completedAt: Date | null;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+};
 
-export async function listPending(db: Db): Promise<Candidate[]> {
-  return db
-    .select()
+export async function listCandidates(db: Db): Promise<CandidateListRow[]> {
+  const rows = await db
+    .select({
+      id: candidates.id,
+      fullName: candidates.fullName,
+      linkedinUrl: candidates.linkedinUrl,
+      email: candidates.email,
+      enrichment: candidates.enrichment,
+      createdAt: candidates.createdAt,
+      status: enrichmentJobs.status,
+      attemptCount: enrichmentJobs.attemptCount,
+      nextAttemptAt: enrichmentJobs.nextAttemptAt,
+      lastAttemptAt: enrichmentJobs.lastAttemptAt,
+      dispatchedAt: enrichmentJobs.dispatchedAt,
+      completedAt: enrichmentJobs.completedAt,
+      lastErrorCode: enrichmentJobs.lastErrorCode,
+      lastErrorMessage: enrichmentJobs.lastErrorMessage,
+    })
     .from(candidates)
-    .where(eq(candidates.status, "pending"))
-    .orderBy(candidates.createdAt);
-}
-
-export async function markSent(db: Db, id: string): Promise<void> {
-  await db
-    .update(candidates)
-    .set({ status: "sent", sentAt: new Date(), lastDispatchError: null })
-    .where(eq(candidates.id, id));
-}
-
-export async function markDispatchError(
-  db: Db,
-  id: string,
-  error: string,
-): Promise<void> {
-  await db
-    .update(candidates)
-    .set({ lastDispatchError: error })
-    .where(eq(candidates.id, id));
+    .leftJoin(enrichmentJobs, eq(enrichmentJobs.candidateId, candidates.id))
+    .orderBy(desc(candidates.createdAt));
+  return rows;
 }
 
 export async function saveEnrichmentByLinkedinUrl(
   db: Db,
   linkedinUrl: string,
   payload: unknown,
-): Promise<boolean> {
+): Promise<string | null> {
   const rows = await db
     .update(candidates)
     .set({
-      status: "enriched",
       enrichment: payload as Candidate["enrichment"],
-      enrichedAt: new Date(),
     })
     .where(eq(candidates.linkedinUrl, linkedinUrl))
     .returning({ id: candidates.id });
-  return rows.length > 0;
+  return rows[0]?.id ?? null;
 }
 
 export type UpsertResult = { inserted: number; updated: number };
@@ -75,8 +85,14 @@ export async function upsertCandidates(
   let inserted = 0;
   let updated = 0;
   for (const row of result) {
-    if (row.isNew) inserted++;
-    else updated++;
+    if (row.isNew) {
+      inserted++;
+      // Newly inserted candidates need a fresh queued job.
+      await jobsRepo.ensureJobForCandidate(db, row.id);
+    } else {
+      updated++;
+      // Existing candidates keep their job as-is (idempotent re-upload).
+    }
   }
   return { inserted, updated };
 }

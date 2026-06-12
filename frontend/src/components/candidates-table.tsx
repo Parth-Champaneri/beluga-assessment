@@ -18,15 +18,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-type Status = "pending" | "sent" | "enriched";
+// Mirrors backend `enrichmentJobStatuses`. `null` happens transiently if a
+// candidate row exists without its job row (shouldn't, but be safe).
+type Status = "queued" | "dispatched" | "done" | "failed" | null;
 
 const statusVariant: Record<
-  Status,
-  "default" | "secondary" | "outline"
+  NonNullable<Status>,
+  "default" | "secondary" | "outline" | "destructive"
 > = {
-  pending: "outline",
-  sent: "secondary",
-  enriched: "default",
+  queued: "outline",
+  dispatched: "secondary",
+  done: "default",
+  failed: "destructive",
 };
 
 export function CandidatesTable() {
@@ -36,7 +39,11 @@ export function CandidatesTable() {
     trpc.candidates.list.queryOptions(undefined, {
       refetchInterval: (q) => {
         const data = q.state.data as { status: Status }[] | undefined;
-        return data?.some((c) => c.status === "sent") ? 2000 : false;
+        return data?.some(
+          (c) => c.status === "queued" || c.status === "dispatched",
+        )
+          ? 2000
+          : false;
       },
     }),
   );
@@ -50,7 +57,7 @@ export function CandidatesTable() {
   );
 
   const pendingCount =
-    candidates.data?.filter((c) => c.status === "pending").length ?? 0;
+    candidates.data?.filter((c) => c.status === "queued").length ?? 0;
   const failedDispatches = enrich.data?.failed ?? [];
 
   return (
@@ -146,14 +153,16 @@ export function CandidatesTable() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <Badge variant={statusVariant[c.status as Status]}>
-                            {c.status}
-                          </Badge>
-                          {c.lastDispatchError && (
+                          {c.status && (
+                            <Badge variant={statusVariant[c.status]}>
+                              {c.status}
+                            </Badge>
+                          )}
+                          {c.lastErrorMessage && (
                             <span
-                              title={c.lastDispatchError}
+                              title={c.lastErrorMessage}
                               className="text-red-600"
-                              aria-label="last dispatch error"
+                              aria-label="last error message"
                             >
                               ⚠
                             </span>
@@ -167,12 +176,16 @@ export function CandidatesTable() {
                     {isOpen && (
                       <TableRow key={`${c.id}-expanded`}>
                         <TableCell colSpan={5}>
-                          {c.lastDispatchError && (
+                          {c.lastErrorMessage && (
                             <div className="mb-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
                               <span className="font-medium">
-                                last dispatch error:
+                                last error
+                                {c.lastErrorCode
+                                  ? ` (${c.lastErrorCode})`
+                                  : ""}
+                                :
                               </span>{" "}
-                              {c.lastDispatchError}
+                              {c.lastErrorMessage}
                             </div>
                           )}
                           <pre className="max-h-72 overflow-auto rounded bg-muted p-3 text-xs">
