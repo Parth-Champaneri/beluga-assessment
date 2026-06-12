@@ -186,3 +186,62 @@ next-retry time, and a "Retry failed (N)" button.
 - `ENRICH_CALLBACK_TIMEOUT_SECONDS=900` — sweeper threshold.
 - `ENRICH_WORKER_INTERVAL_MS=3000` — worker tick interval.
 - `ENRICH_DISPATCH_TIMEOUT_MS=30000` — `AbortController` timeout on the POST.
+
+### Slice 3 — Faceted profile extraction + embedding
+
+Foundation for the multi-stage ranker (Stage 0 hard filters → Stage 1
+embedding recall → Stage 2 cheap-LLM score → Stage 3 strong-LLM rerank).
+This slice only ships step 1 (extract) and step 2 (embed) — no ranking,
+no role rubric, no retrieval queries.
+
+When a Clay callback flips an enrichment job to `done`, the same tx queues
+a `profile_jobs` row. The profile worker drives a second state machine on
+`profile_jobs`:
+
+- **Extract** (`openai.ts:extractProfile`) — calls `OPENAI_EXTRACTION_MODEL`
+  (default `gpt-5-mini`) with `response_format: { type: "json_schema", strict: true }`
+  against `profile-schema.ts`'s closed-enum facets (seniority_band /
+  stack_orientation / company_stage_exposure / b2b_b2c / tenure_pattern /
+  archetype / track) plus open-vocab `industries`, `years_experience`,
+  `key_skills`, and a 1-3 sentence `summary`. The schema is **role-agnostic
+  by design** — the rubric is layered on at rank time, not bound here. The
+  caller server-side overrides `extraction_meta` (model, prompt_version,
+  timestamps, token counts) so the model can't lie about itself.
+- **Embed** (`openai.ts:embedProfile`) — feeds the output of
+  `profile-builder.ts:buildEmbeddingInput` (facets + summary + top recent
+  titles, role-agnostic) into `OPENAI_EMBEDDING_MODEL` (default
+  `text-embedding-3-large`, 3072 dims). `markDoneWithProfile` commits the
+  jsonb profile, the pgvector literal, the embedding-input text, and the
+  job=done flip atomically.
+- **Retry** — `worker.ts`-style state machine: `[5s, 30s, 2m, 10m, 1h]`
+  ±20% jitter, capped at `PROFILE_MAX_ATTEMPTS`. Error taxonomy:
+  `openai_429 | openai_5xx | openai_4xx | network | timeout |
+  validation_failed | config | no_enrichment`. `openai_4xx`, `config`,
+  `validation_failed`, and `no_enrichment` are permanent; the rest
+  backoff-retry. `openai_429` sets an in-memory gate independent of Clay's.
+
+**No sweeper** — the worker drives both API calls inline, no external
+callback to time out on. **No pgvector index** in this slice — vectors are
+written but not queried; HNSW/IVFFlat lands in slice 4 with retrieval.
+
+`pgvector` is enabled by `CREATE EXTENSION IF NOT EXISTS vector;` prepended
+to `drizzle/0003_*.sql`. Drizzle Kit does not emit extension statements, so
+new vector-using migrations need the same manual prepend.
+
+On boot, `backfillMissingProfileJobs` queues a profile job for every
+candidate that has enrichment but no existing profile job — idempotent.
+
+Frontend (`candidates-table.tsx`) has a new Profile column rendering
+seniority/stack/archetype/track badges, an "extracting…" pill while the
+job is in-flight, and a red error-code chip on failure. Expanded row
+shows enrichment + profile JSON side-by-side.
+
+**Env vars** (all optional, defaults shown):
+- `OPENAI_API_KEY` — when unset the worker fails every job with code
+  `config`. The rest of the backend boots normally.
+- `OPENAI_EXTRACTION_MODEL=gpt-5-mini`
+- `OPENAI_EMBEDDING_MODEL=text-embedding-3-large`
+- `OPENAI_TIMEOUT_MS=30000`
+- `PROFILE_WORKER_INTERVAL_MS=5000`
+- `PROFILE_WORKER_CONCURRENCY=5`
+- `PROFILE_MAX_ATTEMPTS=5`
