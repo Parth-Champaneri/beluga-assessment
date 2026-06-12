@@ -32,9 +32,9 @@ export async function markDispatchError(
     .where(eq(candidates.id, id));
 }
 
-export async function saveEnrichment(
+export async function saveEnrichmentByLinkedinUrl(
   db: Db,
-  id: string,
+  linkedinUrl: string,
   payload: unknown,
 ): Promise<boolean> {
   const rows = await db
@@ -44,7 +44,7 @@ export async function saveEnrichment(
       enrichment: payload as Candidate["enrichment"],
       enrichedAt: new Date(),
     })
-    .where(eq(candidates.id, id))
+    .where(eq(candidates.linkedinUrl, linkedinUrl))
     .returning({ id: candidates.id });
   return rows.length > 0;
 }

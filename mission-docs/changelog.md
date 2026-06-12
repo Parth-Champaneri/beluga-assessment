@@ -5,6 +5,15 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — Match callbacks by `linkedin_url` instead of `candidate_id`
+**Request:** Stop wrestling with UUID chips in the Clay body — match on linkedin_url (unique already).
+**Changes:**
+- Callback now expects `{ linkedin_url, enrichment_json }`; URL gets normalized server-side, candidate looked up by `linkedin_url`. Errors become `400 unrecognizable linkedin_url` and `404 unknown linkedin_url`. Logs key off the URL.
+- `repo.saveEnrichmentByLinkedinUrl` replaces `saveEnrichment` (`WHERE linkedin_url = ?`).
+- Dispatch payload to Clay still includes `candidate_id` (harmless extra column) — only the inbound contract changed.
+
+---
+
 ## 2026-06-12 — Callback contract: wrap enrichment in `enrichment_json`
 **Request:** Cleaner shape — Clay sends `{ candidate_id, enrichment_json: {...} }` instead of spreading enrichment fields at the top level; backend stores `enrichment_json` verbatim.
 **Changes:**

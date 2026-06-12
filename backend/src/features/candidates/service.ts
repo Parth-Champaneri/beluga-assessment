@@ -118,8 +118,8 @@ export async function enrichAll(ctx: Context): Promise<EnrichResult> {
 
 export async function applyCallback(
   ctx: Context,
-  candidateId: string,
+  linkedinUrl: string,
   payload: unknown,
 ): Promise<boolean> {
-  return repo.saveEnrichment(ctx.db, candidateId, payload);
+  return repo.saveEnrichmentByLinkedinUrl(ctx.db, linkedinUrl, payload);
 }

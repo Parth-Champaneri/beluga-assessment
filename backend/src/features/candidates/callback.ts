@@ -3,9 +3,10 @@ import { z } from "zod";
 import { db } from "../../db/index.js";
 import { env } from "../../lib/env.js";
 import * as service from "./service.js";
+import { normalizeLinkedinUrl } from "./service.js";
 
 const bodySchema = z.object({
-  candidate_id: z.string().uuid(),
+  linkedin_url: z.string().min(1),
   enrichment_json: z.unknown(),
 });
 
@@ -26,28 +27,38 @@ clayCallbackRouter.post("/api/webhooks/clay", json(), async (req, res) => {
     res.status(400).json({ ok: false, error: parsed.error.message });
     return;
   }
-  const { candidate_id, enrichment_json } = parsed.data;
+  const { linkedin_url, enrichment_json } = parsed.data;
+  const normalized = normalizeLinkedinUrl(linkedin_url);
+  if (!normalized) {
+    console.warn(
+      `[clay-callback] 400 unrecognizable linkedin_url="${linkedin_url}" from ${ip}`,
+    );
+    res
+      .status(400)
+      .json({ ok: false, error: `unrecognizable linkedin_url: ${linkedin_url}` });
+    return;
+  }
   const summary = summarizeEnrichment(enrichment_json);
   try {
     const updated = await service.applyCallback(
       { db },
-      candidate_id,
+      normalized,
       enrichment_json,
     );
     if (!updated) {
       console.warn(
-        `[clay-callback] 404 unknown candidate=${candidate_id} from ${ip}`,
+        `[clay-callback] 404 unknown linkedin_url="${normalized}" from ${ip}`,
       );
-      res.status(404).json({ ok: false, error: "unknown candidate_id" });
+      res.status(404).json({ ok: false, error: "unknown linkedin_url" });
       return;
     }
     console.log(
-      `[clay-callback] ← received candidate=${candidate_id} ${summary}`,
+      `[clay-callback] ← received linkedin_url="${normalized}" ${summary}`,
     );
     res.json({ ok: true });
   } catch (err) {
     console.error(
-      `[clay-callback] 500 error candidate=${candidate_id}:`,
+      `[clay-callback] 500 error linkedin_url="${normalized}":`,
       err,
     );
     res.status(500).json({ ok: false, error: "internal" });

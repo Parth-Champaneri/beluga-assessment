@@ -39,11 +39,12 @@ the Clay UI — Clay has no programmatic API for creating tables or columns.
 3. **Add an "HTTP API" column** as the final step. Configure it to POST to
    `https://<your-tunnel>/api/webhooks/clay`, with header
    `x-callback-secret: <your-secret>` (matching `CLAY_CALLBACK_SECRET` in
-   `backend/.env`). Body must be `{ "candidate_id": "<id chip>",
+   `backend/.env`). Body must be `{ "linkedin_url": "<LinkedIn URL chip>",
    "enrichment_json": { ...whatever fields you want stored... } }`. The
-   backend persists `enrichment_json` verbatim as the candidate's
-   `enrichment` jsonb. Include at least `headline` inside `enrichment_json`
-   so the UI table has something to show.
+   backend matches the row by `linkedin_url` (normalized) and persists
+   `enrichment_json` verbatim as the candidate's `enrichment` jsonb.
+   Include at least `headline` inside `enrichment_json` so the UI table has
+   something to show.
 4. **Expose your local backend** with ngrok or cloudflared so Clay's HTTP API
    column can reach it: `ngrok http 4000`. Paste the public URL into the HTTP
    API column from step 3.
