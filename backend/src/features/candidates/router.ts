@@ -9,5 +9,10 @@ export const candidatesRouter = router({
     .input(z.object({ csvText: z.string().min(1).max(1_000_000) }))
     .mutation(({ ctx, input }) => service.ingestCsv(ctx, input)),
 
-  enrichAll: publicProcedure.mutation(({ ctx }) => service.enrichAll(ctx)),
+  nudgeQueued: publicProcedure.mutation(({ ctx }) => service.nudgeQueued(ctx)),
+
+  // Passthrough alias for the slice-1 UI binding. Kept for one release.
+  enrichAll: publicProcedure.mutation(({ ctx }) => service.nudgeQueued(ctx)),
+
+  retryFailed: publicProcedure.mutation(({ ctx }) => service.retryFailed(ctx)),
 });

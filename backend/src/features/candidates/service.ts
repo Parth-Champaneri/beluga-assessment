@@ -1,14 +1,9 @@
 import Papa from "papaparse";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { Context } from "../../trpc/context.js";
 import * as repo from "./repo.js";
 import * as jobsRepo from "./jobs-repo.js";
-import { dispatchToClay } from "./clay.js";
-import {
-  candidates,
-  enrichmentJobs,
-  type NewCandidate,
-} from "./schema.js";
+import { candidates, type NewCandidate } from "./schema.js";
 
 export type IngestRowError = { row: number; reason: string };
 export type IngestResult = {
@@ -83,84 +78,29 @@ export async function list(ctx: Context) {
   return repo.listCandidates(ctx.db);
 }
 
-export type EnrichResult = {
-  dispatched: number;
-  failed: { candidateId: string; reason: string }[];
-};
+/**
+ * "Enrich pending" — mass-bump `next_attempt_at = now()` on every queued
+ * job so the worker picks them up on its next tick. The worker, not this
+ * call, does the actual dispatch.
+ */
+export async function nudgeQueued(
+  ctx: Context,
+): Promise<{ queued: number }> {
+  const queued = await jobsRepo.nudgeAllQueued(ctx.db);
+  console.log(`[nudge] queued ${queued} job(s) for immediate dispatch`);
+  return { queued };
+}
 
 /**
- * Phase A: keep slice-1's synchronous dispatch loop, but route state writes
- * through `enrichment_jobs`. The async worker lands in Phase B.
- *
- * Pulls every `queued` job, joins to the candidate, POSTs to Clay one at a
- * time with the 300ms gap. On 2xx → mark the job `dispatched`. On any
- * error → revert the job to `queued` with the error stamped on it (so it
- * shows up in the UI; no retry math yet).
+ * "Retry failed" — reset all `failed` jobs back to `queued`, clearing
+ * attempt count and error fields. Worker picks them up on the next tick.
  */
-export async function enrichAll(ctx: Context): Promise<EnrichResult> {
-  const queued = await ctx.db
-    .select({
-      jobId: enrichmentJobs.id,
-      candidateId: candidates.id,
-      fullName: candidates.fullName,
-      linkedinUrl: candidates.linkedinUrl,
-      email: candidates.email,
-    })
-    .from(enrichmentJobs)
-    .innerJoin(candidates, eq(candidates.id, enrichmentJobs.candidateId))
-    .where(eq(enrichmentJobs.status, "queued"))
-    .orderBy(enrichmentJobs.createdAt);
-
-  const failed: EnrichResult["failed"] = [];
-  let dispatched = 0;
-
-  console.log(`[enrich] dispatching ${queued.length} candidate(s) to Clay`);
-  for (const c of queued) {
-    console.log(
-      `[enrich] → sending candidate=${c.candidateId} name="${c.fullName}" url=${c.linkedinUrl}`,
-    );
-    try {
-      await dispatchToClay({
-        candidate_id: c.candidateId,
-        full_name: c.fullName,
-        linkedin_url: c.linkedinUrl,
-        email: c.email,
-      });
-      // Mark job as dispatched. Bump attempt_count + stamps to match what
-      // the worker's atomic claim will do in Phase B.
-      await ctx.db
-        .update(enrichmentJobs)
-        .set({
-          status: "dispatched",
-          dispatchedAt: new Date(),
-          lastAttemptAt: new Date(),
-          attemptCount: sql`${enrichmentJobs.attemptCount} + 1`,
-          lastErrorCode: null,
-          lastErrorMessage: null,
-        })
-        .where(eq(enrichmentJobs.id, c.jobId));
-      dispatched++;
-      console.log(`[enrich] ✓ sent candidate=${c.candidateId}`);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      // Keep the job queued for now; just stamp the error so it's visible.
-      // Real retry/backoff math lands in Phase B's worker.
-      await jobsRepo.revertToQueued(ctx.db, c.jobId, {
-        code: "dispatch_error",
-        message: reason,
-        delaySeconds: 0,
-      });
-      failed.push({ candidateId: c.candidateId, reason });
-      console.error(
-        `[enrich] ✗ failed candidate=${c.candidateId} reason=${reason}`,
-      );
-    }
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  console.log(
-    `[enrich] done — dispatched=${dispatched} failed=${failed.length}`,
-  );
-  return { dispatched, failed };
+export async function retryFailed(
+  ctx: Context,
+): Promise<{ reset: number }> {
+  const reset = await jobsRepo.resetFailedToQueued(ctx.db);
+  console.log(`[retry] reset ${reset} failed job(s) to queued`);
+  return { reset };
 }
 
 /**

@@ -5,6 +5,16 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — resilient worker + mock Clay + retry UI (slice-2)
+**Request:** Slice-2 hardening — retries, timeouts, rate limits, idempotency, DLQ.
+**Changes:**
+- clay.ts: AbortController timeout + typed DispatchResult; categorized error codes (network | timeout | http_429 | http_5xx | http_4xx | config). Honors Retry-After.
+- Mock Clay (CLAY_MOCK_MODE) with 70/10/10/10 ok/429/500/timeout buckets and delayed synthetic callbacks — credit-free demos.
+- Background worker (3s tick): atomic claim + exp backoff retries + in-memory 429 gate; sweeper recovers stuck dispatched rows or DLQs after ENRICH_MAX_ATTEMPTS. enrichAll mutation renamed to nudgeQueued (alias kept).
+- retryFailed mutation + UI: failed badge, attempts/next-retry display, "Retry failed (N)" button.
+
+---
+
 ## 2026-06-12 — enrichment_jobs table + state refactor (slice-2 prep)
 **Request:** Slice-2 prep — extract dispatch lifecycle from candidates into a jobs table.
 **Changes:**
