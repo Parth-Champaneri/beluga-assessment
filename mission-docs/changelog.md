@@ -5,6 +5,15 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — UI: CSV upload + candidates table
+**Request:** Step 3 — single page to upload a CSV and see the candidates that landed.
+**Changes:**
+- New `components/csv-upload.tsx` (file input → `file.text()` → `ingestCsv` mutation, shows added/existed/skipped summary) and `components/candidates-table.tsx` (Name / LinkedIn / Email / Status badge / Headline, row click expands raw enrichment JSON, polls every 2s while any row is `sent`).
+- Rewrote `App.tsx` as a single page composing both.
+- Added Shadcn `table`, `badge`, `card`.
+
+---
+
 ## 2026-06-12 — CSV ingest API
 **Request:** Step 2 — `ingestCsv` and `list` tRPC procedures so a CSV of candidates can be uploaded.
 **Changes:**
