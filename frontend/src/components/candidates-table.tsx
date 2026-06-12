@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { trpc } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -30,6 +31,7 @@ const statusVariant: Record<
 
 export function CandidatesTable() {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const candidates = useQuery(
     trpc.candidates.list.queryOptions(undefined, {
       refetchInterval: (q) => {
@@ -38,11 +40,44 @@ export function CandidatesTable() {
       },
     }),
   );
+  const enrich = useMutation(
+    trpc.candidates.enrichAll.mutationOptions({
+      onSuccess: () =>
+        queryClient.invalidateQueries({
+          queryKey: trpc.candidates.list.queryKey(),
+        }),
+    }),
+  );
+
+  const pendingCount =
+    candidates.data?.filter((c) => c.status === "pending").length ?? 0;
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Candidates</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <CardTitle>Candidates</CardTitle>
+          {enrich.data && (
+            <p className="text-xs text-muted-foreground">
+              dispatched {enrich.data.dispatched}
+              {enrich.data.failed.length > 0 &&
+                `, ${enrich.data.failed.length} failed`}
+            </p>
+          )}
+          {enrich.error && (
+            <p className="text-xs text-red-600">
+              error: {enrich.error.message}
+            </p>
+          )}
+        </div>
+        <Button
+          onClick={() => enrich.mutate()}
+          disabled={enrich.isPending || pendingCount === 0}
+        >
+          {enrich.isPending
+            ? "Enriching…"
+            : `Enrich pending (${pendingCount})`}
+        </Button>
       </CardHeader>
       <CardContent>
         {candidates.isLoading ? (

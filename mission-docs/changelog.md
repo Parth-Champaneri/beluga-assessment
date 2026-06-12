@@ -5,6 +5,15 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — Clay dispatch + webhook callback + Enrich button
+**Request:** Step 4 — send pending candidates to Clay, receive the enriched row back, persist it; Enrich button in the UI.
+**Changes:**
+- `candidates/clay.ts` POSTs `{candidate_id, full_name, linkedin_url, email}` to `CLAY_WEBHOOK_URL` with `x-clay-webhook-auth`. `service.enrichAll` walks `pending`, dispatches with a ~300ms gap, marks `sent`; failures stay `pending` and surface in the response. Exposed as `candidates.enrichAll` mutation.
+- `candidates/callback.ts` plain Express route `POST /api/webhooks/clay` (own `express.json()`), `x-callback-secret` check, zod-validates `candidate_id`, persists the rest of the body as the enrichment JSON and flips status to `enriched`. Mounted in `index.ts` before tRPC.
+- Env vars: `CLAY_WEBHOOK_URL`/`CLAY_WEBHOOK_AUTH` (optional, required only at enrichment time), `CLAY_CALLBACK_SECRET` (defaults to `dev-secret`). README gained a Clay table setup section.
+
+---
+
 ## 2026-06-12 — UI: CSV upload + candidates table
 **Request:** Step 3 — single page to upload a CSV and see the candidates that landed.
 **Changes:**

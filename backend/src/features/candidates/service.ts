@@ -1,6 +1,7 @@
 import Papa from "papaparse";
 import type { Context } from "../../trpc/context.js";
 import * as repo from "./repo.js";
+import { dispatchToClay } from "./clay.js";
 import type { NewCandidate } from "./schema.js";
 
 export type IngestRowError = { row: number; reason: string };
@@ -74,4 +75,43 @@ export async function ingestCsv(
 
 export async function list(ctx: Context) {
   return repo.listCandidates(ctx.db);
+}
+
+export type EnrichResult = {
+  dispatched: number;
+  failed: { candidateId: string; reason: string }[];
+};
+
+export async function enrichAll(ctx: Context): Promise<EnrichResult> {
+  const pending = await repo.listPending(ctx.db);
+  const failed: EnrichResult["failed"] = [];
+  let dispatched = 0;
+
+  for (const c of pending) {
+    try {
+      await dispatchToClay({
+        candidate_id: c.id,
+        full_name: c.fullName,
+        linkedin_url: c.linkedinUrl,
+        email: c.email,
+      });
+      await repo.markSent(ctx.db, c.id);
+      dispatched++;
+    } catch (err) {
+      failed.push({
+        candidateId: c.id,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return { dispatched, failed };
+}
+
+export async function applyCallback(
+  ctx: Context,
+  candidateId: string,
+  payload: unknown,
+): Promise<boolean> {
+  return repo.saveEnrichment(ctx.db, candidateId, payload);
 }

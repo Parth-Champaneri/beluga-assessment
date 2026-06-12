@@ -8,4 +8,6 @@ export const candidatesRouter = router({
   ingestCsv: publicProcedure
     .input(z.object({ csvText: z.string().min(1).max(1_000_000) }))
     .mutation(({ ctx, input }) => service.ingestCsv(ctx, input)),
+
+  enrichAll: publicProcedure.mutation(({ ctx }) => service.enrichAll(ctx)),
 });

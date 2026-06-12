@@ -4,6 +4,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "./trpc/router.js";
 import { createContext } from "./trpc/context.js";
 import { env } from "./lib/env.js";
+import { clayCallbackRouter } from "./features/candidates/callback.js";
 
 const app = express();
 
@@ -17,6 +18,8 @@ app.use(
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
+
+app.use(clayCallbackRouter);
 
 app.use(
   "/trpc",
