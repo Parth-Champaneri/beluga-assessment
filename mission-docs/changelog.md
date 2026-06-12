@@ -5,6 +5,15 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — CSV ingest API
+**Request:** Step 2 — `ingestCsv` and `list` tRPC procedures so a CSV of candidates can be uploaded.
+**Changes:**
+- `candidates/{repo,service,router}.ts`: papaparse CSV with header tolerance, LinkedIn URL normalization, upsert keyed on `linkedin_url` (idempotent re-ingest), returns `{inserted, updated, errors[]}`.
+- CSV is sent as a string through tRPC (≪ 1MB at this scale) rather than a multipart Express route — deliberate deviation from CLAUDE.md's "Express for uploads" note.
+- Added `papaparse` dep.
+
+---
+
 ## 2026-06-12 — Candidates schema + first migration
 **Request:** Step 1 of the Clay enrichment slice — candidates table, drop the example feature.
 **Changes:**
