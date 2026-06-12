@@ -17,17 +17,39 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { EnrichmentInfoModal } from "@/components/enrichment-info-modal";
 
-type Status = "pending" | "sent" | "enriched";
+// Mirrors backend `enrichmentJobStatuses`. `null` happens transiently if a
+// candidate row exists without its job row (shouldn't, but be safe).
+type Status = "queued" | "dispatched" | "done" | "failed" | null;
 
 const statusVariant: Record<
-  Status,
-  "default" | "secondary" | "outline"
+  NonNullable<Status>,
+  "default" | "secondary" | "outline" | "destructive"
 > = {
-  pending: "outline",
-  sent: "secondary",
-  enriched: "default",
+  queued: "outline",
+  dispatched: "secondary",
+  done: "default",
+  failed: "destructive",
 };
+
+// Must match backend ENRICH_MAX_ATTEMPTS default (env.ts). UI display only.
+const MAX_ATTEMPTS = 5;
+
+/**
+ * Coarse "in N seconds/minutes/hours" formatter. Negative durations render
+ * as "now" — we only show next-retry when it's in the future.
+ */
+function humanizeRelative(target: Date, now: Date): string {
+  const deltaMs = target.getTime() - now.getTime();
+  if (deltaMs <= 0) return "now";
+  const seconds = Math.round(deltaMs / 1000);
+  if (seconds < 60) return `in ${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `in ${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  return `in ${hours}h`;
+}
 
 export function CandidatesTable() {
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -36,62 +58,85 @@ export function CandidatesTable() {
     trpc.candidates.list.queryOptions(undefined, {
       refetchInterval: (q) => {
         const data = q.state.data as { status: Status }[] | undefined;
-        return data?.some((c) => c.status === "sent") ? 2000 : false;
+        return data?.some(
+          (c) => c.status === "queued" || c.status === "dispatched",
+        )
+          ? 2000
+          : false;
       },
     }),
   );
-  const enrich = useMutation(
-    trpc.candidates.enrichAll.mutationOptions({
-      onSuccess: () =>
-        queryClient.invalidateQueries({
-          queryKey: trpc.candidates.list.queryKey(),
-        }),
+
+  const invalidateList = () =>
+    queryClient.invalidateQueries({
+      queryKey: trpc.candidates.list.queryKey(),
+    });
+
+  const nudge = useMutation(
+    trpc.candidates.nudgeQueued.mutationOptions({
+      onSuccess: invalidateList,
+    }),
+  );
+  const retry = useMutation(
+    trpc.candidates.retryFailed.mutationOptions({
+      onSuccess: invalidateList,
     }),
   );
 
-  const pendingCount =
-    candidates.data?.filter((c) => c.status === "pending").length ?? 0;
-  const failedDispatches = enrich.data?.failed ?? [];
+  const queuedCount =
+    candidates.data?.filter((c) => c.status === "queued").length ?? 0;
+  const failedCount =
+    candidates.data?.filter((c) => c.status === "failed").length ?? 0;
+
+  const anyMutating = nudge.isPending || retry.isPending;
+  const now = new Date();
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <CardTitle>Candidates</CardTitle>
-          {enrich.data && (
+          {nudge.data && (
             <p className="text-xs text-muted-foreground">
-              dispatched {enrich.data.dispatched}
-              {failedDispatches.length > 0 &&
-                `, ${failedDispatches.length} failed`}
+              queued {nudge.data.queued} for dispatch
             </p>
           )}
-          {enrich.error && (
+          {retry.data && (
+            <p className="text-xs text-muted-foreground">
+              reset {retry.data.reset} failed job(s)
+            </p>
+          )}
+          {nudge.error && (
             <p className="text-xs text-red-600">
-              error: {enrich.error.message}
+              error: {nudge.error.message}
             </p>
           )}
-          {failedDispatches.length > 0 && (
-            <ul className="text-xs text-red-600 list-disc pl-4 max-w-md">
-              {failedDispatches.slice(0, 5).map((f) => (
-                <li key={f.candidateId} className="truncate">
-                  <span className="font-mono">{f.candidateId.slice(0, 8)}</span>
-                  : {f.reason}
-                </li>
-              ))}
-              {failedDispatches.length > 5 && (
-                <li>… {failedDispatches.length - 5} more</li>
-              )}
-            </ul>
+          {retry.error && (
+            <p className="text-xs text-red-600">
+              error: {retry.error.message}
+            </p>
           )}
         </div>
-        <Button
-          onClick={() => enrich.mutate()}
-          disabled={enrich.isPending || pendingCount === 0}
-        >
-          {enrich.isPending
-            ? "Enriching…"
-            : `Enrich pending (${pendingCount})`}
-        </Button>
+        <div className="flex items-center gap-2">
+          <EnrichmentInfoModal />
+          <Button
+            onClick={() => nudge.mutate()}
+            disabled={anyMutating || queuedCount === 0}
+          >
+            {nudge.isPending
+              ? "Enriching…"
+              : `Enrich pending (${queuedCount})`}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => retry.mutate()}
+            disabled={anyMutating || failedCount === 0}
+          >
+            {retry.isPending
+              ? "Retrying…"
+              : `Retry failed (${failedCount})`}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {candidates.isLoading ? (
@@ -120,6 +165,13 @@ export function CandidatesTable() {
                 const enrichment =
                   (c.enrichment ?? null) as { headline?: string } | null;
                 const isOpen = expanded === c.id;
+                const nextAttempt = c.nextAttemptAt
+                  ? new Date(c.nextAttemptAt as unknown as string)
+                  : null;
+                const showNextRetry =
+                  c.status === "queued" &&
+                  nextAttempt !== null &&
+                  nextAttempt.getTime() > now.getTime();
                 return (
                   <>
                     <TableRow
@@ -146,14 +198,16 @@ export function CandidatesTable() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <Badge variant={statusVariant[c.status as Status]}>
-                            {c.status}
-                          </Badge>
-                          {c.lastDispatchError && (
+                          {c.status && (
+                            <Badge variant={statusVariant[c.status]}>
+                              {c.status}
+                            </Badge>
+                          )}
+                          {c.lastErrorMessage && (
                             <span
-                              title={c.lastDispatchError}
+                              title={c.lastErrorMessage}
                               className="text-red-600"
-                              aria-label="last dispatch error"
+                              aria-label="last error message"
                             >
                               ⚠
                             </span>
@@ -167,14 +221,31 @@ export function CandidatesTable() {
                     {isOpen && (
                       <TableRow key={`${c.id}-expanded`}>
                         <TableCell colSpan={5}>
-                          {c.lastDispatchError && (
-                            <div className="mb-2 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
-                              <span className="font-medium">
-                                last dispatch error:
-                              </span>{" "}
-                              {c.lastDispatchError}
+                          <div className="mb-2 flex flex-col gap-1 text-xs text-muted-foreground">
+                            <div>
+                              <span className="font-medium">Attempts:</span>{" "}
+                              {c.attemptCount ?? 0} / {MAX_ATTEMPTS}
                             </div>
-                          )}
+                            {showNextRetry && nextAttempt && (
+                              <div>
+                                <span className="font-medium">
+                                  Next retry:
+                                </span>{" "}
+                                {humanizeRelative(nextAttempt, now)}
+                              </div>
+                            )}
+                            {c.lastErrorCode && (
+                              <div className="text-red-700">
+                                <span className="font-medium">Error:</span>{" "}
+                                <span className="font-mono">
+                                  {c.lastErrorCode}
+                                </span>
+                                {c.lastErrorMessage
+                                  ? ` — ${c.lastErrorMessage}`
+                                  : ""}
+                              </div>
+                            )}
+                          </div>
                           <pre className="max-h-72 overflow-auto rounded bg-muted p-3 text-xs">
                             {enrichment
                               ? JSON.stringify(enrichment, null, 2)

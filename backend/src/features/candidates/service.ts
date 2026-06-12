@@ -1,8 +1,9 @@
 import Papa from "papaparse";
+import { eq } from "drizzle-orm";
 import type { Context } from "../../trpc/context.js";
 import * as repo from "./repo.js";
-import { dispatchToClay } from "./clay.js";
-import type { NewCandidate } from "./schema.js";
+import * as jobsRepo from "./jobs-repo.js";
+import { candidates, type NewCandidate } from "./schema.js";
 
 export type IngestRowError = { row: number; reason: string };
 export type IngestResult = {
@@ -77,49 +78,77 @@ export async function list(ctx: Context) {
   return repo.listCandidates(ctx.db);
 }
 
-export type EnrichResult = {
-  dispatched: number;
-  failed: { candidateId: string; reason: string }[];
-};
-
-export async function enrichAll(ctx: Context): Promise<EnrichResult> {
-  const pending = await repo.listPending(ctx.db);
-  const failed: EnrichResult["failed"] = [];
-  let dispatched = 0;
-
-  console.log(`[enrich] dispatching ${pending.length} candidate(s) to Clay`);
-  for (const c of pending) {
-    console.log(
-      `[enrich] → sending candidate=${c.id} name="${c.fullName}" url=${c.linkedinUrl}`,
-    );
-    try {
-      await dispatchToClay({
-        candidate_id: c.id,
-        full_name: c.fullName,
-        linkedin_url: c.linkedinUrl,
-        email: c.email,
-      });
-      await repo.markSent(ctx.db, c.id);
-      dispatched++;
-      console.log(`[enrich] ✓ sent candidate=${c.id}`);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      await repo.markDispatchError(ctx.db, c.id, reason);
-      failed.push({ candidateId: c.id, reason });
-      console.error(`[enrich] ✗ failed candidate=${c.id} reason=${reason}`);
-    }
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  console.log(
-    `[enrich] done — dispatched=${dispatched} failed=${failed.length}`,
-  );
-  return { dispatched, failed };
+/**
+ * "Enrich pending" — mass-bump `next_attempt_at = now()` on every queued
+ * job so the worker picks them up on its next tick. The worker, not this
+ * call, does the actual dispatch.
+ */
+export async function nudgeQueued(
+  ctx: Context,
+): Promise<{ queued: number }> {
+  const queued = await jobsRepo.nudgeAllQueued(ctx.db);
+  console.log(`[nudge] queued ${queued} job(s) for immediate dispatch`);
+  return { queued };
 }
 
+/**
+ * "Retry failed" — reset all `failed` jobs back to `queued`, clearing
+ * attempt count and error fields. Worker picks them up on the next tick.
+ */
+export async function retryFailed(
+  ctx: Context,
+): Promise<{ reset: number }> {
+  const reset = await jobsRepo.resetFailedToQueued(ctx.db);
+  console.log(`[retry] reset ${reset} failed job(s) to queued`);
+  return { reset };
+}
+
+/**
+ * Apply a Clay callback. Writes the enrichment payload to `candidates` AND
+ * flips the matched job to `done` in a single transaction.
+ *
+ * - If no candidate matches the linkedin_url → returns false.
+ * - If the matched job was already `failed` (we gave up but Clay arrived
+ *   late) we still accept the callback and log a warning.
+ * - Idempotent: re-delivery just overwrites the same fields.
+ */
 export async function applyCallback(
   ctx: Context,
   linkedinUrl: string,
   payload: unknown,
 ): Promise<boolean> {
-  return repo.saveEnrichmentByLinkedinUrl(ctx.db, linkedinUrl, payload);
+  return ctx.db.transaction(async (tx) => {
+    // Type-assert: drizzle's transaction handle is structurally the same as
+    // our Db type for our purposes (we only use select/update/execute).
+    const txDb = tx as unknown as typeof ctx.db;
+
+    const updated = await txDb
+      .update(candidates)
+      .set({ enrichment: payload as never })
+      .where(eq(candidates.linkedinUrl, linkedinUrl))
+      .returning({ id: candidates.id });
+
+    const candidateId = updated[0]?.id;
+    if (!candidateId) return false;
+
+    const job = await jobsRepo.getJob(txDb, candidateId);
+    if (job && job.status === "failed") {
+      console.warn(
+        `[clay-callback] ⚠ late callback for failed job candidate=${candidateId} — accepting and flipping to done`,
+      );
+    }
+    if (job) {
+      await jobsRepo.markDone(txDb, job.id);
+    } else {
+      // Belt-and-suspenders: shouldn't happen (upsert creates a job) but if
+      // somehow missing, create one in `done` state so the row is consistent.
+      console.warn(
+        `[clay-callback] ⚠ no job row for candidate=${candidateId} — creating one in done state`,
+      );
+      await jobsRepo.ensureJobForCandidate(txDb, candidateId);
+      const created = await jobsRepo.getJob(txDb, candidateId);
+      if (created) await jobsRepo.markDone(txDb, created.id);
+    }
+    return true;
+  });
 }
