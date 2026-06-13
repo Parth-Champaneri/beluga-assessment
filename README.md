@@ -144,9 +144,6 @@ Ordered most → least impactful for this system.
 - **DB-cached explanations** keyed by `(jobId, candidateId, prompt_version)`
   so re-viewing a JD's matches doesn't re-burn tokens. Deliberately deferred
   in slice 4 step 2.
-- **Streamed explanations.** UI populates each row's one-liner as it returns
-  instead of waiting for the whole batch — per-candidate mutation or SSE.
-  Pure perceived-perf, doesn't change the output.
 - **Cost dashboard.** Token counts already persist in
   `profile_extraction_meta`; next step is summing per JD / per day in the
   UI. For now I read costs from the OpenAI dashboard.
@@ -156,7 +153,4 @@ Ordered most → least impactful for this system.
   `linkedin_url` would add a second idempotency layer at the source. Knock-on:
   the callback could match by primary key instead of the `linkedin_url`
   unique index.
-- **pgvector HNSW index** on `candidates.profile_embedding`. Only relevant
-  once the corpus passes a few thousand rows — exact cosine sim is fast at
-  100-row scale.
 
