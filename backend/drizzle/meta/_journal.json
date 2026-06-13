@@ -36,6 +36,13 @@
       "when": 1781310245908,
       "tag": "0004_slow_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781312190091,
+      "tag": "0005_confused_purple_man",
+      "breakpoints": true
     }
   ]
 }
