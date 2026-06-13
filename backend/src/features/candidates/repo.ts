@@ -3,13 +3,18 @@ import type { Db } from "../../db/index.js";
 import {
   candidates,
   enrichmentJobs,
+  profileJobs,
   type NewCandidate,
   type Candidate,
   type EnrichmentJobStatus,
+  type ProfileJobStatus,
 } from "./schema.js";
 import * as jobsRepo from "./jobs-repo.js";
 
-export type CandidateListRow = Candidate & {
+export type CandidateListRow = Omit<
+  Candidate,
+  "profileEmbedding" | "profileExtractionMeta"
+> & {
   status: EnrichmentJobStatus | null;
   attemptCount: number | null;
   nextAttemptAt: Date | null;
@@ -18,6 +23,9 @@ export type CandidateListRow = Candidate & {
   completedAt: Date | null;
   lastErrorCode: string | null;
   lastErrorMessage: string | null;
+  profileStatus: ProfileJobStatus | null;
+  profileLastErrorCode: string | null;
+  profileLastErrorMessage: string | null;
 };
 
 export async function listCandidates(db: Db): Promise<CandidateListRow[]> {
@@ -28,6 +36,7 @@ export async function listCandidates(db: Db): Promise<CandidateListRow[]> {
       linkedinUrl: candidates.linkedinUrl,
       email: candidates.email,
       enrichment: candidates.enrichment,
+      profile: candidates.profile,
       createdAt: candidates.createdAt,
       status: enrichmentJobs.status,
       attemptCount: enrichmentJobs.attemptCount,
@@ -37,9 +46,13 @@ export async function listCandidates(db: Db): Promise<CandidateListRow[]> {
       completedAt: enrichmentJobs.completedAt,
       lastErrorCode: enrichmentJobs.lastErrorCode,
       lastErrorMessage: enrichmentJobs.lastErrorMessage,
+      profileStatus: profileJobs.status,
+      profileLastErrorCode: profileJobs.lastErrorCode,
+      profileLastErrorMessage: profileJobs.lastErrorMessage,
     })
     .from(candidates)
     .leftJoin(enrichmentJobs, eq(enrichmentJobs.candidateId, candidates.id))
+    .leftJoin(profileJobs, eq(profileJobs.candidateId, candidates.id))
     .orderBy(desc(candidates.createdAt));
   return rows;
 }

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { Context } from "../../trpc/context.js";
 import * as repo from "./repo.js";
 import * as jobsRepo from "./jobs-repo.js";
+import * as profileJobsRepo from "./profile-jobs-repo.js";
 import { candidates, type NewCandidate } from "./schema.js";
 
 export type IngestRowError = { row: number; reason: string };
@@ -104,6 +105,19 @@ export async function retryFailed(
 }
 
 /**
+ * Same idea as retryFailed but for profile_jobs — typically used after
+ * a prompt/schema fix to re-run extraction on every candidate that
+ * previously hit a permanent error.
+ */
+export async function retryFailedProfiles(
+  ctx: Context,
+): Promise<{ reset: number }> {
+  const reset = await profileJobsRepo.resetFailedToQueued(ctx.db);
+  console.log(`[retry] reset ${reset} failed profile job(s) to queued`);
+  return { reset };
+}
+
+/**
  * Apply a Clay callback. Writes the enrichment payload to `candidates` AND
  * flips the matched job to `done` in a single transaction.
  *
@@ -149,6 +163,11 @@ export async function applyCallback(
       const created = await jobsRepo.getJob(txDb, candidateId);
       if (created) await jobsRepo.markDone(txDb, created.id);
     }
+
+    // Enqueue the follow-on profile extraction in the same tx. Idempotent
+    // via UNIQUE(candidate_id); a re-delivered callback won't double-queue.
+    await profileJobsRepo.ensureJobForCandidate(txDb, candidateId);
+
     return true;
   });
 }

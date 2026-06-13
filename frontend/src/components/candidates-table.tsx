@@ -19,8 +19,8 @@ import {
 } from "@/components/ui/table";
 import { EnrichmentInfoModal } from "@/components/enrichment-info-modal";
 
-// Mirrors backend `enrichmentJobStatuses`. `null` happens transiently if a
-// candidate row exists without its job row (shouldn't, but be safe).
+// Mirrors backend `enrichmentJobStatuses` / `profileJobStatuses`. `null`
+// happens transiently if a candidate row exists without its job row.
 type Status = "queued" | "dispatched" | "done" | "failed" | null;
 
 const statusVariant: Record<
@@ -32,6 +32,13 @@ const statusVariant: Record<
   done: "default",
   failed: "destructive",
 };
+
+type ProfileFacets = {
+  seniority_band?: string;
+  stack_orientation?: string;
+  archetype?: string;
+  track?: string;
+} | null;
 
 // Must match backend ENRICH_MAX_ATTEMPTS default (env.ts). UI display only.
 const MAX_ATTEMPTS = 5;
@@ -57,9 +64,15 @@ export function CandidatesTable() {
   const candidates = useQuery(
     trpc.candidates.list.queryOptions(undefined, {
       refetchInterval: (q) => {
-        const data = q.state.data as { status: Status }[] | undefined;
+        const data = q.state.data as
+          | { status: Status; profileStatus: Status }[]
+          | undefined;
         return data?.some(
-          (c) => c.status === "queued" || c.status === "dispatched",
+          (c) =>
+            c.status === "queued" ||
+            c.status === "dispatched" ||
+            c.profileStatus === "queued" ||
+            c.profileStatus === "dispatched",
         )
           ? 2000
           : false;
@@ -82,13 +95,21 @@ export function CandidatesTable() {
       onSuccess: invalidateList,
     }),
   );
+  const retryProfiles = useMutation(
+    trpc.candidates.retryFailedProfiles.mutationOptions({
+      onSuccess: invalidateList,
+    }),
+  );
 
   const queuedCount =
     candidates.data?.filter((c) => c.status === "queued").length ?? 0;
   const failedCount =
     candidates.data?.filter((c) => c.status === "failed").length ?? 0;
+  const failedProfileCount =
+    candidates.data?.filter((c) => c.profileStatus === "failed").length ?? 0;
 
-  const anyMutating = nudge.isPending || retry.isPending;
+  const anyMutating =
+    nudge.isPending || retry.isPending || retryProfiles.isPending;
   const now = new Date();
 
   return (
@@ -136,6 +157,15 @@ export function CandidatesTable() {
               ? "Retrying…"
               : `Retry failed (${failedCount})`}
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => retryProfiles.mutate()}
+            disabled={anyMutating || failedProfileCount === 0}
+          >
+            {retryProfiles.isPending
+              ? "Retrying…"
+              : `Retry failed profiles (${failedProfileCount})`}
+          </Button>
         </div>
       </CardHeader>
       <CardContent>
@@ -158,12 +188,14 @@ export function CandidatesTable() {
                 <TableHead>Email</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Headline</TableHead>
+                <TableHead>Profile</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {candidates.data.map((c) => {
                 const enrichment =
                   (c.enrichment ?? null) as { headline?: string } | null;
+                const profile = (c.profile ?? null) as ProfileFacets;
                 const isOpen = expanded === c.id;
                 const nextAttempt = c.nextAttemptAt
                   ? new Date(c.nextAttemptAt as unknown as string)
@@ -217,10 +249,20 @@ export function CandidatesTable() {
                       <TableCell className="max-w-[260px] truncate text-muted-foreground">
                         {enrichment?.headline ?? "—"}
                       </TableCell>
+                      <TableCell>
+                        <ProfileBadges
+                          profile={profile}
+                          profileStatus={c.profileStatus}
+                          profileLastErrorCode={c.profileLastErrorCode ?? null}
+                          profileLastErrorMessage={
+                            c.profileLastErrorMessage ?? null
+                          }
+                        />
+                      </TableCell>
                     </TableRow>
                     {isOpen && (
                       <TableRow key={`${c.id}-expanded`}>
-                        <TableCell colSpan={5}>
+                        <TableCell colSpan={6}>
                           <div className="mb-2 flex flex-col gap-1 text-xs text-muted-foreground">
                             <div>
                               <span className="font-medium">Attempts:</span>{" "}
@@ -236,7 +278,9 @@ export function CandidatesTable() {
                             )}
                             {c.lastErrorCode && (
                               <div className="text-red-700">
-                                <span className="font-medium">Error:</span>{" "}
+                                <span className="font-medium">
+                                  Enrichment error:
+                                </span>{" "}
                                 <span className="font-mono">
                                   {c.lastErrorCode}
                                 </span>
@@ -245,12 +289,42 @@ export function CandidatesTable() {
                                   : ""}
                               </div>
                             )}
+                            {c.profileLastErrorCode && (
+                              <div className="text-red-700">
+                                <span className="font-medium">
+                                  Profile error:
+                                </span>{" "}
+                                <span className="font-mono">
+                                  {c.profileLastErrorCode}
+                                </span>
+                                {c.profileLastErrorMessage
+                                  ? ` — ${c.profileLastErrorMessage}`
+                                  : ""}
+                              </div>
+                            )}
                           </div>
-                          <pre className="max-h-72 overflow-auto rounded bg-muted p-3 text-xs">
-                            {enrichment
-                              ? JSON.stringify(enrichment, null, 2)
-                              : "no enrichment yet"}
-                          </pre>
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <div>
+                              <div className="mb-1 text-xs font-medium text-muted-foreground">
+                                Enrichment
+                              </div>
+                              <pre className="max-h-72 overflow-auto rounded bg-muted p-3 text-xs">
+                                {enrichment
+                                  ? JSON.stringify(enrichment, null, 2)
+                                  : "no enrichment yet"}
+                              </pre>
+                            </div>
+                            <div>
+                              <div className="mb-1 text-xs font-medium text-muted-foreground">
+                                Profile
+                              </div>
+                              <pre className="max-h-72 overflow-auto rounded bg-muted p-3 text-xs">
+                                {profile
+                                  ? JSON.stringify(profile, null, 2)
+                                  : "no profile yet"}
+                              </pre>
+                            </div>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )}
@@ -262,5 +336,56 @@ export function CandidatesTable() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function ProfileBadges({
+  profile,
+  profileStatus,
+  profileLastErrorCode,
+  profileLastErrorMessage,
+}: {
+  profile: ProfileFacets;
+  profileStatus: Status;
+  profileLastErrorCode: string | null;
+  profileLastErrorMessage: string | null;
+}) {
+  if (profileStatus === "queued" || profileStatus === "dispatched") {
+    return (
+      <span className="text-xs text-muted-foreground">extracting…</span>
+    );
+  }
+  if (profileStatus === "failed") {
+    return (
+      <span
+        className="font-mono text-xs text-red-600"
+        title={profileLastErrorMessage ?? undefined}
+      >
+        ✗ {profileLastErrorCode ?? "failed"}
+      </span>
+    );
+  }
+  if (!profile) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  const tags = [
+    profile.seniority_band,
+    profile.stack_orientation,
+    profile.archetype,
+    profile.track,
+  ].filter(
+    (v): v is string => typeof v === "string" && v.length > 0 && v !== "unknown",
+  );
+  if (tags.length === 0) {
+    return <span className="text-xs text-muted-foreground">no signal</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1">
+      {tags.map((t) => (
+        <Badge key={t} variant="secondary" className="font-mono text-[10px]">
+          {t}
+        </Badge>
+      ))}
+    </div>
   );
 }

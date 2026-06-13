@@ -7,6 +7,8 @@ import { env } from "./lib/env.js";
 import { db } from "./db/index.js";
 import { clayCallbackRouter } from "./features/candidates/callback.js";
 import { startEnrichmentWorker } from "./features/candidates/worker.js";
+import { startProfileWorker } from "./features/candidates/profile-worker.js";
+import { backfillMissingProfileJobs } from "./features/candidates/profile-jobs-repo.js";
 
 const app = express();
 
@@ -36,11 +38,20 @@ const server = app.listen(env.PORT, () => {
 });
 
 const worker = startEnrichmentWorker({ db });
+const profileWorker = startProfileWorker({ db });
+
+// Boot-time catch-up: queue profile jobs for any candidate already enriched
+// before this slice landed. Idempotent — safe on every boot.
+void backfillMissingProfileJobs(db)
+  .then((n) => {
+    if (n > 0) console.log(`[profile-worker] backfilled ${n} job(s) on boot`);
+  })
+  .catch((err) => console.error("[profile-worker] backfill error", err));
 
 async function shutdown(signal: string): Promise<void> {
   console.log(`[backend] received ${signal} — shutting down`);
   try {
-    await worker.stop();
+    await Promise.all([worker.stop(), profileWorker.stop()]);
   } catch (err) {
     console.error("[backend] worker.stop() error", err);
   }

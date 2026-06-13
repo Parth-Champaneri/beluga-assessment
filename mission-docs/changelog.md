@@ -5,6 +5,16 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-12 — Faceted profile extraction + embedding (slice-3 step 1)
+**Request:** Build the prep layer for ranking — distill enrichment into faceted profiles and embed them, no ranking yet.
+**Changes:**
+- New `candidates.profile` (jsonb) + `profile_embedding` (vector(3072)) + `profile_embedding_input` (text). Migration 0003 prepends `CREATE EXTENSION vector`.
+- New `profile_jobs` queue + worker mirroring the enrichment state machine (exp backoff, typed `openai_*` error codes, in-memory 429 gate). `applyCallback` enqueues a profile job in the same tx; backend boot backfills existing enriched candidates.
+- OpenAI integration: `gpt-5-mini` extraction via structured outputs (closed-enum facets + open-vocab industries) → `text-embedding-3-large` (3072 dims). Embedding-input is a role-agnostic text block (facets + summary + recent titles). Env: OPENAI_API_KEY, OPENAI_EXTRACTION_MODEL, OPENAI_EMBEDDING_MODEL, PROFILE_*.
+- Candidates table UI: new Profile column with seniority/stack/archetype/track badges; "extracting…" while in-flight; expanded row shows enrichment + profile JSON side-by-side.
+
+---
+
 ## 2026-06-12 — slice-2 docs (plan snapshot + README resilience)
 **Request:** Land slice-2 documentation so the pg-boss decision and new env vars survive.
 **Changes:**

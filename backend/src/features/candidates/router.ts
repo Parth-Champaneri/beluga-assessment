@@ -15,4 +15,8 @@ export const candidatesRouter = router({
   enrichAll: publicProcedure.mutation(({ ctx }) => service.nudgeQueued(ctx)),
 
   retryFailed: publicProcedure.mutation(({ ctx }) => service.retryFailed(ctx)),
+
+  retryFailedProfiles: publicProcedure.mutation(({ ctx }) =>
+    service.retryFailedProfiles(ctx),
+  ),
 });
