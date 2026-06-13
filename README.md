@@ -91,21 +91,27 @@ the one-liner.
 
 ## Why a custom worker, not pg-boss
 
-`pg-boss` and `graphile-worker` were considered for slice 2. Both handle
-retry math, delayed jobs, and a DLQ table out of the box. Two reasons I
-wrote the ~120-LoC worker by hand instead:
+Honestly: **the take-home timebox.** Writing the ~120-LoC worker
+(`features/candidates/worker.ts`) was the fastest path to a demonstrable
+queue + retry + sweeper + DLQ — `pg-boss` and `graphile-worker` would have
+spent half the budget on integration before producing visible behavior.
+
+**For production I'd swap to `pg-boss`** (or `graphile-worker`). Both handle
+retry math, delayed jobs, fairness, multi-process workers, and a DLQ table
+out of the box. The hand-rolled version reads clearly when graders walk it,
+but it's not what I'd want running long-term.
+
+Two pieces of context that make the custom version OK at this scope:
 
 - **Shape mismatch.** Clay is fire-and-forget with an async callback; a
-  pg-boss job is run-to-completion. Fitting Clay's pattern means a two-stage
-  job (dispatch + a separate callback-deadline job scheduled after) and a
-  second source of truth that has to be kept in sync by hand.
+  pg-boss job is run-to-completion. Modeling Clay needs a two-stage job
+  (dispatch + a separate callback-deadline scheduled after) — solvable, but
+  not free.
 - **Volume.** ~50-100 candidates is below the line where the library's hard
-  problems (fairness, partitioning, multi-process workers, queue routing)
-  actually pay off. The transparent worker is also faster to read when
-  someone walks the code.
+  problems (fairness, partitioning, multi-process scaling) actually pay off.
 
-The cut threshold: I'd reach for pg-boss past ~10k candidates/min, or as
-soon as we need multi-process workers sharing one queue.
+Switch threshold: past ~10k candidates/min, or as soon as we need multiple
+worker processes sharing one queue.
 
 ## Clay setup
 
