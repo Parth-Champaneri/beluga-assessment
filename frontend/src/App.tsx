@@ -1,5 +1,6 @@
 import { CsvUpload } from "@/components/csv-upload";
 import { CandidatesTable } from "@/components/candidates-table";
+import { JobDescriptionRanker } from "@/components/job-description-ranker";
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
           </p>
         </header>
         <CsvUpload />
+        <JobDescriptionRanker />
         <CandidatesTable />
       </div>
     </div>

@@ -136,3 +136,83 @@ export async function remove(
     .returning({ id: jobDescriptions.id });
   return { deleted: result.length > 0 };
 }
+
+export type CandidateMatch = {
+  id: string;
+  fullName: string;
+  linkedinUrl: string;
+  email: string | null;
+  profile: unknown;
+  profileStatus: string | null;
+  similarity: number;
+};
+
+/**
+ * Rank candidates against a JD by cosine similarity. Uses pgvector's
+ * `<=>` (cosine distance) — for the OpenAI embeddings (already L2-
+ * normalized) this gives `similarity = 1 - distance` in [-1, 1].
+ *
+ * Candidates without an embedding are skipped (no profile yet, or extract
+ * failed). They show up zero — the UI surfaces this so the user knows.
+ */
+export async function findMatchesForJob(
+  ctx: Context,
+  input: { jobId: string; limit?: number },
+): Promise<CandidateMatch[]> {
+  const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
+
+  // Confirm the JD exists and has an embedding before running the
+  // (otherwise empty) cosine sim — gives a useful error instead of a
+  // silent empty list.
+  const jdCheck = await ctx.db.execute<{ has_embedding: boolean }>(sql`
+    SELECT (profile_embedding IS NOT NULL) AS has_embedding
+      FROM job_descriptions
+     WHERE id = ${input.jobId}
+     LIMIT 1;
+  `);
+  if (jdCheck.rows.length === 0) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "job description not found" });
+  }
+  if (!jdCheck.rows[0]?.has_embedding) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "job description has no embedding yet",
+    });
+  }
+
+  const result = await ctx.db.execute<{
+    id: string;
+    full_name: string;
+    linkedin_url: string;
+    email: string | null;
+    profile: unknown;
+    profile_status: string | null;
+    similarity: number | string;
+  }>(sql`
+    WITH jd AS (
+      SELECT profile_embedding FROM job_descriptions WHERE id = ${input.jobId}
+    )
+    SELECT c.id,
+           c.full_name,
+           c.linkedin_url,
+           c.email,
+           c.profile,
+           pj.status AS profile_status,
+           1 - (c.profile_embedding <=> (SELECT profile_embedding FROM jd)) AS similarity
+      FROM candidates c
+      LEFT JOIN profile_jobs pj ON pj.candidate_id = c.id
+     WHERE c.profile_embedding IS NOT NULL
+     ORDER BY c.profile_embedding <=> (SELECT profile_embedding FROM jd) ASC
+     LIMIT ${limit};
+  `);
+
+  return result.rows.map((r) => ({
+    id: r.id,
+    fullName: r.full_name,
+    linkedinUrl: r.linkedin_url,
+    email: r.email,
+    profile: r.profile,
+    profileStatus: r.profile_status,
+    similarity: Number(r.similarity),
+  }));
+}

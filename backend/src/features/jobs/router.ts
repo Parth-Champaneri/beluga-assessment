@@ -21,4 +21,13 @@ export const jobsRouter = router({
   remove: publicProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(({ ctx, input }) => service.remove(ctx, input)),
+
+  matches: publicProcedure
+    .input(
+      z.object({
+        jobId: z.string().uuid(),
+        limit: z.number().int().min(1).max(200).optional(),
+      }),
+    )
+    .query(({ ctx, input }) => service.findMatchesForJob(ctx, input)),
 });
