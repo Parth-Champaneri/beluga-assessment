@@ -2,11 +2,11 @@ import OpenAI, { APIError } from "openai";
 import { env } from "../../lib/env.js";
 import {
   profileSchema,
-  profileModelOutputSchema,
   profileJsonSchema,
   SYSTEM_PROMPT,
   PROMPT_VERSION,
   type Profile,
+  type ExtractionMeta,
 } from "./profile-schema.js";
 
 export type OpenAiErrorCode =
@@ -72,7 +72,7 @@ function mapOpenAiError(err: unknown): {
 
 export async function extractProfile(
   enrichment: unknown,
-): Promise<OpenAiResult<{ profile: Profile; truncatedInput: boolean }>> {
+): Promise<OpenAiResult<{ profile: Profile; extractionMeta: ExtractionMeta }>> {
   const client = getClient();
   if (!client) {
     return {
@@ -87,7 +87,6 @@ export async function extractProfile(
   // load-bearing — no point hand-truncating useful signal.
   const rawJson = JSON.stringify(enrichment, null, 2);
   const userMessage = "Raw enrichment JSON:\n\n" + rawJson;
-  const truncatedInput = false;
 
   const t0 = Date.now();
   let completion: Awaited<
@@ -140,34 +139,27 @@ export async function extractProfile(
     return { ok: false, code: "validation_failed", message: msg };
   }
 
-  // First validate the model's output (facets only). extraction_meta is
-  // attached server-side — the model's contract excludes it so OpenAI's
-  // strict structured-outputs mode is happy (all properties required +
-  // additionalProperties: false).
   let profile: Profile;
   try {
-    const modelOutput = profileModelOutputSchema.parse(parsed);
-    profile = profileSchema.parse({
-      ...modelOutput,
-      extraction_meta: {
-        model: env.OPENAI_EXTRACTION_MODEL,
-        prompt_version: PROMPT_VERSION,
-        extracted_at: new Date().toISOString(),
-        prompt_tokens: completion.usage?.prompt_tokens,
-        completion_tokens: completion.usage?.completion_tokens,
-        truncated_input: truncatedInput,
-      },
-    });
+    profile = profileSchema.parse(parsed);
   } catch (err) {
     const msg = err instanceof Error ? err.message.slice(0, 500) : String(err);
     console.error(`[openai] ✗ extract code=validation_failed msg=${msg}`);
     return { ok: false, code: "validation_failed", message: msg };
   }
 
+  const extractionMeta: ExtractionMeta = {
+    model: env.OPENAI_EXTRACTION_MODEL,
+    prompt_version: PROMPT_VERSION,
+    extracted_at: new Date().toISOString(),
+    prompt_tokens: completion.usage?.prompt_tokens,
+    completion_tokens: completion.usage?.completion_tokens,
+  };
+
   console.log(
     `[openai] ✓ extract model=${env.OPENAI_EXTRACTION_MODEL} tokens=${completion.usage?.prompt_tokens ?? "?"}/${completion.usage?.completion_tokens ?? "?"} ms=${ms}`,
   );
-  return { ok: true, value: { profile, truncatedInput } };
+  return { ok: true, value: { profile, extractionMeta } };
 }
 
 export async function embedProfile(

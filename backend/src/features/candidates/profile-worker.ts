@@ -91,8 +91,8 @@ async function processOne(db: Db, claimed: ProfileJob): Promise<void> {
 
   await jobsRepo.markDoneWithProfile(db, claimed.id, candidate.id, {
     profile: extracted.value.profile,
+    extractionMeta: extracted.value.extractionMeta,
     embedding: embedded.value,
-    embeddingInput,
   });
   console.log(
     `[profile-worker] ✓ candidate=${candidate.id} archetype=${extracted.value.profile.archetype} seniority=${extracted.value.profile.seniority_band}`,

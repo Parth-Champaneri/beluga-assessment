@@ -13,7 +13,7 @@ import * as jobsRepo from "./jobs-repo.js";
 
 export type CandidateListRow = Omit<
   Candidate,
-  "profileEmbedding" | "profileEmbeddingInput"
+  "profileEmbedding" | "profileExtractionMeta"
 > & {
   status: EnrichmentJobStatus | null;
   attemptCount: number | null;

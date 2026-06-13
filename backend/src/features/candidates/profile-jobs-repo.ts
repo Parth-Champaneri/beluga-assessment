@@ -122,7 +122,7 @@ export async function markDone(db: Db, jobId: string): Promise<void> {
 }
 
 /**
- * Atomically write the candidate's profile + embedding + embedding input,
+ * Atomically write the candidate's profile + extraction meta + embedding,
  * then flip the job to `done`. Callers typically pass a tx handle as `db`
  * so both writes commit together.
  *
@@ -135,16 +135,16 @@ export async function markDoneWithProfile(
   candidateId: string,
   payload: {
     profile: unknown;
+    extractionMeta: unknown;
     embedding: number[];
-    embeddingInput: string;
   },
 ): Promise<void> {
   const vectorLiteral = `[${payload.embedding.join(",")}]`;
   await db.execute(sql`
     UPDATE candidates
-       SET profile                 = ${JSON.stringify(payload.profile)}::jsonb,
-           profile_embedding       = ${vectorLiteral}::vector,
-           profile_embedding_input = ${payload.embeddingInput}
+       SET profile                  = ${JSON.stringify(payload.profile)}::jsonb,
+           profile_extraction_meta  = ${JSON.stringify(payload.extractionMeta)}::jsonb,
+           profile_embedding        = ${vectorLiteral}::vector
      WHERE id = ${candidateId};
   `);
   await markDone(db, jobId);

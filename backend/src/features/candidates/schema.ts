@@ -16,8 +16,8 @@ export const candidates = pgTable("candidates", {
   email: text("email"),
   enrichment: jsonb("enrichment"),
   profile: jsonb("profile"),
+  profileExtractionMeta: jsonb("profile_extraction_meta"),
   profileEmbedding: vector("profile_embedding", { dimensions: 3072 }),
-  profileEmbeddingInput: text("profile_embedding_input"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
