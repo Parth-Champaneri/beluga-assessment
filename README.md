@@ -81,14 +81,13 @@ The project landed in four slices. Each adds a layer on top of the previous one.
 
 ### Custom worker
 
-- **Why hand-rolled.** Take-home timebox. A ~120-LoC worker
-  (`features/candidates/worker.ts`) was the fastest path to a visible
-  queue + retry + sweeper + DLQ.
-- **Production swap.** An off-the-shelf queue library would handle retry
-  math, delayed jobs, fairness, and multi-process workers out of the box —
-  what I'd run long-term.
-- **Switch threshold.** Past ~10k candidates/min, or as soon as multiple
-  worker processes need to share one queue.
+- **Why hand-rolled.** YAGNI in a take-home timebox. The whole queue +
+  retry + sweeper + DLQ (`features/candidates/worker.ts`) is ~120 LoC —
+  small enough that configuring an off-the-shelf queue library and learning
+  its conventions would have taken longer than writing it.
+- **Production swap.** An off-the-shelf queue library handles retry math,
+  delayed jobs, fairness, and multi-process workers out of the box — what
+  I'd run long-term.
 
 ## Clay setup
 
