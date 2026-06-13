@@ -15,7 +15,7 @@ const schema = z.object({
   ENRICH_CALLBACK_TIMEOUT_SECONDS: z.coerce.number().default(900),
   ENRICH_DISPATCH_CONCURRENCY: z.coerce.number().int().positive().default(20),
   OPENAI_API_KEY: z.string().min(1).optional(),
-  OPENAI_EXTRACTION_MODEL: z.string().min(1).default("gpt-5-mini"),
+  OPENAI_EXTRACTION_MODEL: z.string().min(1).default("gpt-5.4-2026-03-05"),
   OPENAI_EMBEDDING_MODEL: z.string().min(1).default("text-embedding-3-large"),
   OPENAI_TIMEOUT_MS: z.coerce.number().default(30000),
   PROFILE_WORKER_INTERVAL_MS: z.coerce.number().default(5000),

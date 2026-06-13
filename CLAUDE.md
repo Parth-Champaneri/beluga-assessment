@@ -199,7 +199,7 @@ a `profile_jobs` row. The profile worker drives a second state machine on
 `profile_jobs`:
 
 - **Extract** (`openai.ts:extractProfile`) — calls `OPENAI_EXTRACTION_MODEL`
-  (default `gpt-5-mini`) with `response_format: { type: "json_schema", strict: true }`
+  (default `gpt-5.4-2026-03-05`) with `response_format: { type: "json_schema", strict: true }`
   against `profile-schema.ts`'s closed-enum facets (seniority_band /
   stack_orientation / company_stage_exposure / b2b_b2c / tenure_pattern /
   archetype / track) plus open-vocab `industries`, `years_experience`,
@@ -239,7 +239,7 @@ shows enrichment + profile JSON side-by-side.
 **Env vars** (all optional, defaults shown):
 - `OPENAI_API_KEY` — when unset the worker fails every job with code
   `config`. The rest of the backend boots normally.
-- `OPENAI_EXTRACTION_MODEL=gpt-5-mini`
+- `OPENAI_EXTRACTION_MODEL=gpt-5.4-2026-03-05`
 - `OPENAI_EMBEDDING_MODEL=text-embedding-3-large`
 - `OPENAI_TIMEOUT_MS=30000`
 - `PROFILE_WORKER_INTERVAL_MS=5000`

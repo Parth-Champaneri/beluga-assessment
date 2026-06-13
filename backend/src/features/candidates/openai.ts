@@ -82,7 +82,7 @@ export async function extractProfile(
     };
   }
 
-  // Feed the full enrichment payload. gpt-5-mini's 128k-token context is
+  // Feed the full enrichment payload. The extraction model's context is
   // far larger than any single Clay row, and the extractor's quality is
   // load-bearing — no point hand-truncating useful signal.
   const rawJson = JSON.stringify(enrichment, null, 2);
