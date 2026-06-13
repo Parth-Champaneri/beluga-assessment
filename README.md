@@ -153,12 +153,13 @@ Full schema with defaults: `backend/src/lib/env.ts`. The useful knobs:
   and the JSONB shape candidates land in would benefit from a deliberate
   revisit. This is the work I'd do first — match quality downstream depends
   on it. Pure time-constraint, not a deliberate design choice.
-- **Stage 0 hard filters.** Drop candidates below required-years or missing a
-  must-have skill before any LLM call — saves the explainer's token budget
-  for candidates who could plausibly fit.
-- **Stage 3 strong-model re-ranker.** Top 10-15 from the current pipeline go
-  to a stronger model (`gpt-5.4` or `claude-opus`) for fine-grained ordering
-  and polished reasoning. Spend tokens only where they earn signal.
+- **Hard filters for candidates.** Drop candidates below required-years or
+  missing a must-have skill before any LLM call — saves the explainer's
+  token budget for candidates who could plausibly fit.
+- **Strong-model re-ranker.** Take only the candidates in the Strong and
+  Good match buckets from the current pipeline and run them through a
+  stronger model (`gpt-5.4` or `claude-opus`) for fine-grained ordering and
+  polished reasoning. Spend tokens only where they earn signal.
 - **Streamed explanations.** UI populates each row's one-liner as it returns
   instead of waiting for the whole batch — per-candidate mutation or SSE.
 - **DB-cached explanations** keyed by `(jobId, candidateId, prompt_version)`
@@ -167,9 +168,6 @@ Full schema with defaults: `backend/src/lib/env.ts`. The useful knobs:
 - **pgvector HNSW index** on `candidates.profile_embedding` once the corpus
   passes a few thousand rows — exact cosine sim is fast at 100-row scale but
   doesn't stay flat.
-- **LISTEN/NOTIFY** for both workers, replacing 3s/5s polling with
-  event-driven wake-ups — pushes enrichment + profile-extraction latency
-  closer to zero between ticks.
 - **Per-row retry button** in the UI alongside the existing batch
   "Retry failed (N)".
 
