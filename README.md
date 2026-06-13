@@ -12,8 +12,10 @@ Two independent npm projects, run side-by-side:
 - `backend/` — Express + TypeScript (ESM, `tsx` in dev) + tRPC v11 + Drizzle
   on Neon Postgres (pgvector) + OpenAI. Port **4000**.
 
-Architecture, conventions, and feature anatomy live in `CLAUDE.md`. Slice
-plans + decision snapshots live in `mission-docs/`.
+Architecture and conventions live in `CLAUDE.md`. `mission-docs/` holds
+plan snapshots and `changelog.md` — the changelog is updated on every
+functional change as a CLAUDE.md project discipline, so it reflects the
+actual build order rather than a written-after-the-fact summary.
 
 ## Quick start
 
@@ -146,6 +148,19 @@ Full schema with defaults: `backend/src/lib/env.ts`. The useful knobs:
   Good match buckets from the current pipeline and run them through a
   stronger model (`gpt-5.4` or `claude-opus`) for fine-grained ordering and
   polished reasoning. Spend tokens only where they earn signal.
+- **Clay trigger on `candidate_id` too.** App-layer dedupe already exists
+  (unique constraint on `enrichment_jobs.candidate_id`), but configuring the
+  Clay table's HTTP API column to fire on `candidate_id` change instead of
+  just `linkedin_url` would add a second idempotency layer at the source.
+  As a knock-on, the callback could match by primary key instead of the
+  `linkedin_url` unique index — a small write-path win. Tricky to wire in
+  Clay's UI; skipped for time.
+- **Eval calibration harness.** Small fixture set + scoring for the
+  extractor and explainer prompts so prompt-version regressions show up
+  before they ship.
+- **Cost dashboard.** Token counts already persist in
+  `profile_extraction_meta`; next step is summing per JD / per day in the
+  UI. For now I read costs from the OpenAI dashboard.
 - **Streamed explanations.** UI populates each row's one-liner as it returns
   instead of waiting for the whole batch — per-candidate mutation or SSE.
 - **DB-cached explanations** keyed by `(jobId, candidateId, prompt_version)`
