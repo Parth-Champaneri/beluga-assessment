@@ -89,6 +89,24 @@ cached-token counts plus a batch cache-rate %. UI is a sortable table:
 color-coded match chip (green / yellow / orange / red), similarity %, and
 the one-liner.
 
+## Why a custom worker, not pg-boss
+
+`pg-boss` and `graphile-worker` were considered for slice 2. Both handle
+retry math, delayed jobs, and a DLQ table out of the box. Two reasons I
+wrote the ~120-LoC worker by hand instead:
+
+- **Shape mismatch.** Clay is fire-and-forget with an async callback; a
+  pg-boss job is run-to-completion. Fitting Clay's pattern means a two-stage
+  job (dispatch + a separate callback-deadline job scheduled after) and a
+  second source of truth that has to be kept in sync by hand.
+- **Volume.** ~50-100 candidates is below the line where the library's hard
+  problems (fairness, partitioning, multi-process workers, queue routing)
+  actually pay off. The transparent worker is also faster to read when
+  someone walks the code.
+
+The cut threshold: I'd reach for pg-boss past ~10k candidates/min, or as
+soon as we need multi-process workers sharing one queue.
+
 ## Clay setup
 
 Skip this section if running with `CLAY_MOCK_MODE=1`.
@@ -119,3 +137,26 @@ Full schema with defaults: `backend/src/lib/env.ts`. The useful knobs:
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-large` | 3072-dim. Same model embeds candidates and JDs so cosine sim is meaningful. |
 | `OPENAI_EXPLAIN_MODEL` | `gpt-5-mini` | Per-candidate match explainer + category. |
 | `ENRICH_*`, `PROFILE_*` | see env.ts | Worker tick interval, concurrency, retry budget, callback-timeout threshold. |
+
+## With another week
+
+- **Stage 0 hard filters.** Drop candidates below required-years or missing a
+  must-have skill before any LLM call — saves the explainer's token budget
+  for candidates who could plausibly fit.
+- **Stage 3 strong-model re-ranker.** Top 10-15 from the current pipeline go
+  to a stronger model (`gpt-5.4` or `claude-opus`) for fine-grained ordering
+  and polished reasoning. Spend tokens only where they earn signal.
+- **Streamed explanations.** UI populates each row's one-liner as it returns
+  instead of waiting for the whole batch — per-candidate mutation or SSE.
+- **DB-cached explanations** keyed by `(jobId, candidateId, prompt_version)`
+  so re-viewing a JD's matches doesn't re-burn tokens. Deliberately deferred
+  in slice 4 step 2.
+- **pgvector HNSW index** on `candidates.profile_embedding` once the corpus
+  passes a few thousand rows — exact cosine sim is fast at 100-row scale but
+  doesn't stay flat.
+- **LISTEN/NOTIFY** for both workers, replacing 3s/5s polling with
+  event-driven wake-ups — pushes enrichment + profile-extraction latency
+  closer to zero between ticks.
+- **Per-row retry button** in the UI alongside the existing batch
+  "Retry failed (N)".
+
