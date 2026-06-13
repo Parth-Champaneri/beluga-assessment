@@ -19,7 +19,7 @@ const schema = z.object({
   OPENAI_EMBEDDING_MODEL: z.string().min(1).default("text-embedding-3-large"),
   OPENAI_TIMEOUT_MS: z.coerce.number().default(30000),
   PROFILE_WORKER_INTERVAL_MS: z.coerce.number().default(5000),
-  PROFILE_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5),
+  PROFILE_WORKER_CONCURRENCY: z.coerce.number().int().positive().default(20),
   PROFILE_MAX_ATTEMPTS: z.coerce.number().default(5),
 });
 
