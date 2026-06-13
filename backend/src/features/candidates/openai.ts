@@ -82,10 +82,12 @@ export async function extractProfile(
     };
   }
 
+  // Feed the full enrichment payload. gpt-5-mini's 128k-token context is
+  // far larger than any single Clay row, and the extractor's quality is
+  // load-bearing — no point hand-truncating useful signal.
   const rawJson = JSON.stringify(enrichment, null, 2);
-  const truncatedInput = rawJson.length > 30000;
-  const truncatedJson = truncatedInput ? rawJson.slice(0, 30000) : rawJson;
-  const userMessage = "Raw enrichment JSON:\n\n" + truncatedJson;
+  const userMessage = "Raw enrichment JSON:\n\n" + rawJson;
+  const truncatedInput = false;
 
   const t0 = Date.now();
   let completion: Awaited<
