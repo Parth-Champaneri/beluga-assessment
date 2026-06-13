@@ -81,7 +81,7 @@ The project landed in four slices. Each adds a layer on top of the previous one.
 
 ### Custom worker
 
-- **Why hand-rolled.** YAGNI in a take-home timebox. The whole queue +
+- **Why hand-rolled.**  In a take-home timebox. The whole queue +
   retry + sweeper + DLQ (`features/candidates/worker.ts`) is ~120 LoC —
   small enough that configuring an off-the-shelf queue library and learning
   its conventions would have taken longer than writing it.
@@ -122,39 +122,41 @@ Full schema with defaults: `backend/src/lib/env.ts`. The useful knobs:
 
 ## With another week
 
-- **Second pass on candidate extraction + storage.** The slice-3 facet vocab
-  and the raw-Clay-to-profile mapping were shipped fast to get the pipeline
-  end-to-end. Real debt here: we're not pulling everything out of the
-  enrichment payload, several facet enums are coarser than they should be,
-  and the JSONB shape candidates land in would benefit from a deliberate
-  revisit. This is the work I'd do first — match quality downstream depends
-  on it. Pure time-constraint, not a deliberate design choice.
+Ordered most → least impactful for this system.
+
+- **Second pass on candidate extraction + storage.** Foundation — every
+  downstream stage (embedding, facet filtering, explainer) reads from this.
+  Slice 3 shipped the vocab fast to get the pipeline end-to-end; we're not
+  pulling everything out of the enrichment payload, several facet enums are
+  coarser than they should be, and the JSONB shape candidates land in would
+  benefit from a deliberate revisit. Pure time-constraint, not a deliberate
+  design choice.
+- **Strong-model re-ranker.** Take only the Strong and Good match buckets
+  and run them through a stronger model (`gpt-5.4` or `claude-opus`) for
+  fine-grained ordering and polished reasoning. Spend tokens only where
+  they earn signal — and this is the part users look at first.
 - **Hard filters for candidates.** Drop candidates below required-years or
-  missing a must-have skill before any LLM call — saves the explainer's
-  token budget for candidates who could plausibly fit.
-- **Strong-model re-ranker.** Take only the candidates in the Strong and
-  Good match buckets from the current pipeline and run them through a
-  stronger model (`gpt-5.4` or `claude-opus`) for fine-grained ordering and
-  polished reasoning. Spend tokens only where they earn signal.
-- **Clay trigger on `candidate_id` too.** App-layer dedupe already exists
-  (unique constraint on `enrichment_jobs.candidate_id`), but configuring the
-  Clay table's HTTP API column to fire on `candidate_id` change instead of
-  just `linkedin_url` would add a second idempotency layer at the source.
-  As a knock-on, the callback could match by primary key instead of the
-  `linkedin_url` unique index — a small write-path win. Tricky to wire in
-  Clay's UI; skipped for time.
+  missing a must-have skill before any LLM call — cleaner top-50 going into
+  the explainer, fewer tokens wasted on obvious misses.
 - **Eval calibration harness.** Small fixture set + scoring for the
   extractor and explainer prompts so prompt-version regressions show up
-  before they ship.
-- **Cost dashboard.** Token counts already persist in
-  `profile_extraction_meta`; next step is summing per JD / per day in the
-  UI. For now I read costs from the OpenAI dashboard.
-- **Streamed explanations.** UI populates each row's one-liner as it returns
-  instead of waiting for the whole batch — per-candidate mutation or SSE.
+  before they ship. Protects the three items above from silent erosion.
 - **DB-cached explanations** keyed by `(jobId, candidateId, prompt_version)`
   so re-viewing a JD's matches doesn't re-burn tokens. Deliberately deferred
   in slice 4 step 2.
-- **pgvector HNSW index** on `candidates.profile_embedding` once the corpus
-  passes a few thousand rows — exact cosine sim is fast at 100-row scale but
-  doesn't stay flat.
+- **Streamed explanations.** UI populates each row's one-liner as it returns
+  instead of waiting for the whole batch — per-candidate mutation or SSE.
+  Pure perceived-perf, doesn't change the output.
+- **Cost dashboard.** Token counts already persist in
+  `profile_extraction_meta`; next step is summing per JD / per day in the
+  UI. For now I read costs from the OpenAI dashboard.
+- **Clay trigger on `candidate_id` too.** App-layer dedupe already exists
+  (unique constraint on `enrichment_jobs.candidate_id`); configuring Clay's
+  HTTP API column to fire on `candidate_id` change instead of just
+  `linkedin_url` would add a second idempotency layer at the source. Knock-on:
+  the callback could match by primary key instead of the `linkedin_url`
+  unique index.
+- **pgvector HNSW index** on `candidates.profile_embedding`. Only relevant
+  once the corpus passes a few thousand rows — exact cosine sim is fast at
+  100-row scale.
 
