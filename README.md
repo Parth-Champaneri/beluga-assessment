@@ -146,6 +146,13 @@ Full schema with defaults: `backend/src/lib/env.ts`. The useful knobs:
 
 ## With another week
 
+- **Second pass on candidate extraction + storage.** The slice-3 facet vocab
+  and the raw-Clay-to-profile mapping were shipped fast to get the pipeline
+  end-to-end. Real debt here: we're not pulling everything out of the
+  enrichment payload, several facet enums are coarser than they should be,
+  and the JSONB shape candidates land in would benefit from a deliberate
+  revisit. This is the work I'd do first — match quality downstream depends
+  on it. Pure time-constraint, not a deliberate design choice.
 - **Stage 0 hard filters.** Drop candidates below required-years or missing a
   must-have skill before any LLM call — saves the explainer's token budget
   for candidates who could plausibly fit.
