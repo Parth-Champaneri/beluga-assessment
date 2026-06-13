@@ -38,56 +38,42 @@ Hit http://localhost:5173.
 
 The project landed in four slices. Each adds a layer on top of the previous one.
 
-### Slice 1 — Clay enrichment
+### Phase 1 — Clay enrichment
 
-CSV upload → candidates persisted with `linkedin_url` upsert → each pending
-row POSTed to a Clay table's webhook → Clay calls back at
-`/api/webhooks/clay` (`x-callback-secret`-gated) → enrichment matched by
-normalized URL, stored as JSONB. The UI is a single page: upload card +
-candidates table with status badge and expandable raw enrichment.
+- Upload CSV of candidates
+- Backend POSTs each to a Clay webhook
+- Clay POSTs the enriched row back; stored as JSONB
+- UI: candidates table with status badge + raw enrichment
 
-### Slice 2 — Resilience
+### Phase 2 — Resilience
 
-Dispatch lifecycle moves into an `enrichment_jobs` queue
-(`queued → dispatched → done | failed`) driven by an in-process worker. A
-3s tick claims due rows with `FOR UPDATE SKIP LOCKED` and fans dispatches
-out concurrently. Transient failures get typed error codes
-(`http_429 | http_5xx | network | timeout | …`) and retry with exponential
-backoff + jitter, with an in-memory rate-limit gate honoring Clay's
-`Retry-After`. A **sweeper** in the same tick recovers `dispatched` rows
-whose callback never arrives. A `CLAY_MOCK_MODE` provider deterministically
-hits every failure bucket so demos work without Clay credits. UI gains
-failed badges, attempt counts, next-retry timestamps, and a
-"Retry failed (N)" button.
+- `enrichment_jobs` queue: `queued → dispatched → done | failed`
+- Worker tick retries transient errors with exponential backoff + jitter
+- Sweeper recovers `dispatched` rows whose callback never arrives
+- Honors Clay's 429 `Retry-After`
+- `CLAY_MOCK_MODE` for credit-free demos (hits every failure bucket)
+- UI: failed badges, attempt counts, "Retry failed (N)" button
 
-### Slice 3 — Faceted profile + embedding
+### Phase 3 — Faceted profile + embedding
 
-When a candidate's enrichment lands, a second worker calls OpenAI
-(`gpt-5.4-2026-03-05`) with strict JSON-schema structured outputs to distill
-the raw enrichment into a **role-agnostic** fixed-vocab profile (seniority
-band, stack orientation, archetype, track, industries, B2B/B2C, plus a
-normalized `recent_role_title` and `recent_role_responsibilities` aggregated
-from every prior role of the same craft). The profile is then formatted as a
-`key=value` text block — JSON syntax stripped, full experience / education /
-projects pulled from the raw enrichment — and embedded via
-`text-embedding-3-large` (3072 dims) into pgvector. Same worker pattern as
-slice 2: retries, error taxonomy, 429 gate. The candidates table shows
-facet badges per row.
+- LLM distills raw enrichment into a fixed-vocab profile (seniority, stack,
+  archetype, track, industries, B2B/B2C, normalized recent role + same-craft
+  responsibilities)
+- Profile serialized as `key=value` text, embedded with
+  `text-embedding-3-large` (3072 dims), stored in pgvector
+- Same worker pattern as Phase 2 (queue, retries, 429 gate)
+- UI: facet badges per row
 
-### Slice 4 — JD ranking
+### Phase 4 — JD ranking
 
-Paste a job description into the ranker card. The backend extracts a parallel
-`jobProfileSchema` (reuses the slice-3 enum vocab so embeddings overlap),
-embeds it in the same 3072-dim space, then ranks candidates by cosine
-similarity via pgvector's `<=>`. For the top 50, `gpt-5-mini` is called once
-per candidate to return `{ category, explanation }` — categories are
-**Strong / Good / Low / Irrelevant**, the explanation is a ≤15-word fit
-sentence citing a specific skill or role-craft match. The prompt is laid out
-so the JD-side content is the byte-identical leading prefix across the
-batch — OpenAI's auto-prompt-cache picks this up and we log per-call
-cached-token counts plus a batch cache-rate %. UI is a sortable table:
-color-coded match chip (green / yellow / orange / red), similarity %, and
-the one-liner.
+- Paste a JD; backend extracts a parallel `jobProfileSchema` and embeds it
+  into the same 3072-dim space
+- Cosine similarity (pgvector `<=>`) ranks candidates
+- `gpt-5-mini` writes a ≤15-word fit sentence + category per top-50
+  candidate (**Strong / Good / Low / Irrelevant**)
+- Prompt laid out so the JD content auto-caches across the batch — logs
+  per-call cached-token count + batch cache-rate %
+- UI: sortable table — color-coded match chip, similarity %, one-liner
 
 ## Why a custom worker, not pg-boss
 
