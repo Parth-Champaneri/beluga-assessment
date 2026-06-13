@@ -77,29 +77,18 @@ The project landed in four slices. Each adds a layer on top of the previous one.
   per-call cached-token count + batch cache-rate %
 - UI: sortable table — color-coded match chip, similarity %, one-liner
 
-## Why a custom worker, not pg-boss
+## Trade-offs
 
-Honestly: **the take-home timebox.** Writing the ~120-LoC worker
-(`features/candidates/worker.ts`) was the fastest path to a demonstrable
-queue + retry + sweeper + DLQ — `pg-boss` and `graphile-worker` would have
-spent half the budget on integration before producing visible behavior.
+### Custom worker
 
-**For production I'd swap to `pg-boss`** (or `graphile-worker`). Both handle
-retry math, delayed jobs, fairness, multi-process workers, and a DLQ table
-out of the box. The hand-rolled version reads clearly when graders walk it,
-but it's not what I'd want running long-term.
-
-Two pieces of context that make the custom version OK at this scope:
-
-- **Shape mismatch.** Clay is fire-and-forget with an async callback; a
-  pg-boss job is run-to-completion. Modeling Clay needs a two-stage job
-  (dispatch + a separate callback-deadline scheduled after) — solvable, but
-  not free.
-- **Volume.** ~50-100 candidates is below the line where the library's hard
-  problems (fairness, partitioning, multi-process scaling) actually pay off.
-
-Switch threshold: past ~10k candidates/min, or as soon as we need multiple
-worker processes sharing one queue.
+- **Why hand-rolled.** Take-home timebox. A ~120-LoC worker
+  (`features/candidates/worker.ts`) was the fastest path to a visible
+  queue + retry + sweeper + DLQ.
+- **Production swap.** An off-the-shelf queue library would handle retry
+  math, delayed jobs, fairness, and multi-process workers out of the box —
+  what I'd run long-term.
+- **Switch threshold.** Past ~10k candidates/min, or as soon as multiple
+  worker processes need to share one queue.
 
 ## Clay setup
 
