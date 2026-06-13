@@ -42,6 +42,8 @@ type CandidateProfileFacets = {
 } | null;
 
 type MatchCategory = "strong_match" | "good_match" | "low_match" | "irrelevant";
+type SortKey = "similarity" | "category";
+type SortDir = "asc" | "desc";
 
 function formatSimilarity(s: number): string {
   return `${(s * 100).toFixed(1)}%`;
@@ -64,10 +66,29 @@ const CATEGORY_CLASS: Record<MatchCategory, string> = {
   irrelevant: "border-transparent bg-red-600 text-white hover:bg-red-600/90",
 };
 
+const CATEGORY_ORDER: Record<MatchCategory, number> = {
+  strong_match: 1,
+  good_match: 2,
+  low_match: 3,
+  irrelevant: 4,
+};
+
 export function JobDescriptionRanker() {
   const [title, setTitle] = useState("");
   const [descriptionText, setDescriptionText] = useState("");
   const [jobId, setJobId] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("similarity");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortKey(key);
+      // Default direction per column: similarity desc (best first), category asc (strong first).
+      setSortDir(key === "category" ? "asc" : "desc");
+    }
+  };
 
   const ingest = useMutation(
     trpc.jobs.ingest.mutationOptions({
@@ -125,6 +146,33 @@ export function JobDescriptionRanker() {
   const ingestedProfile = (ingest.data?.profile ?? null) as JobProfileFacets;
   const explainerPending =
     explanations.isLoading || explanations.isFetching;
+
+  const sortedMatches = (() => {
+    const rows = matches.data ?? [];
+    if (rows.length === 0) return rows;
+    const sorted = [...rows].sort((a, b) => {
+      if (sortKey === "similarity") {
+        return sortDir === "desc"
+          ? b.similarity - a.similarity
+          : a.similarity - b.similarity;
+      }
+      // Sort by category. Rows without an explanation yet (or failed) sort
+      // last. Within the same category, tiebreak by similarity desc so the
+      // strongest of each bucket floats to the top.
+      const catA = explanationByCandidate.get(a.id)?.category;
+      const catB = explanationByCandidate.get(b.id)?.category;
+      const orderA = catA ? CATEGORY_ORDER[catA] : 99;
+      const orderB = catB ? CATEGORY_ORDER[catB] : 99;
+      if (orderA !== orderB) {
+        return sortDir === "asc" ? orderA - orderB : orderB - orderA;
+      }
+      return b.similarity - a.similarity;
+    });
+    return sorted;
+  })();
+
+  const sortIndicator = (key: SortKey) =>
+    sortKey === key ? (sortDir === "desc" ? " ↓" : " ↑") : "";
 
   return (
     <Card>
@@ -209,13 +257,29 @@ export function JobDescriptionRanker() {
                   <TableRow>
                     <TableHead className="w-10">#</TableHead>
                     <TableHead>Candidate</TableHead>
-                    <TableHead className="w-28">Match</TableHead>
-                    <TableHead className="w-24">Similarity</TableHead>
+                    <TableHead className="w-28">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort("category")}
+                        className="font-medium hover:text-foreground"
+                      >
+                        Match{sortIndicator("category")}
+                      </button>
+                    </TableHead>
+                    <TableHead className="w-24">
+                      <button
+                        type="button"
+                        onClick={() => toggleSort("similarity")}
+                        className="font-medium hover:text-foreground"
+                      >
+                        Similarity{sortIndicator("similarity")}
+                      </button>
+                    </TableHead>
                     <TableHead>Why</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {matches.data.map((m, i) => {
+                  {sortedMatches.map((m, i) => {
                     const profile = (m.profile ?? null) as CandidateProfileFacets;
                     const facetTags = [
                       profile?.recent_role_title,

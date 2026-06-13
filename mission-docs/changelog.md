@@ -5,20 +5,20 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
-## 2026-06-13 — Per-candidate fit category + Match table UI
+## 2026-06-12 — Per-candidate fit category + Match table UI
 **Request:** Categorize each top-50 match into Strong/Good/Low/Irrelevant and switch the ranked list to a table with a color-coded chip.
 **Changes:**
 - match-explainer.ts now uses structured outputs (`{ category, explanation }`) with the four-bucket rubric in the system prompt; `MatchCategory` enum exported and threaded through service/router.
 - Ranked list is now a `<Table>` (#, Candidate, Match chip, Similarity, Why). Chip colors: green/yellow/orange/red for strong/good/low/irrelevant.
 
-## 2026-06-13 — Per-candidate one-liner fit explainer (slice-4 step 2)
+## 2026-06-12 — Per-candidate one-liner fit explainer (slice-4 step 2)
 **Request:** After the cosine sim, run gpt-5-mini per candidate to produce a ≤15-word fit sentence; lean on OpenAI auto-prompt-cache for the shared JD prefix.
 **Changes:**
 - `features/jobs/match-explainer.ts` + `jobs.explainMatches` tRPC query. System+ROLE block is byte-identical across the batch; we log per-call `cached_tokens` and a batch cache-rate %.
 - Ranker UI fires explainMatches after matches resolves; renders italic one-liner under each candidate name; per-call failures show the error code, others unaffected.
 - Env: `OPENAI_EXPLAIN_MODEL=gpt-5-mini`, `OPENAI_EXPLAIN_TIMEOUT_MS=30000`.
 
-## 2026-06-13 — JD ranker UI + cosine-similarity matches (slice-4 step 1)
+## 2026-06-12 — JD ranker UI + cosine-similarity matches (slice-4 step 1)
 **Request:** Paste a JD, see candidates ranked by embedding similarity to it.
 **Changes:**
 - New `features/jobs/` folder: `job_descriptions` table (vector(3072) in same space as candidates), zod `jobProfileSchema` reusing candidate-side enum const arrays, synchronous ingest (extract + embed + persist in one mutation), and `jobs.matches` query using pgvector `<=>` cosine distance.
