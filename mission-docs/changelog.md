@@ -5,6 +5,38 @@ Functional changes, newest on top. Keep entries short — one-sentence request,
 
 ---
 
+## 2026-06-13 — Per-candidate fit category + Match table UI
+**Request:** Categorize each top-50 match into Strong/Good/Low/Irrelevant and switch the ranked list to a table with a color-coded chip.
+**Changes:**
+- match-explainer.ts now uses structured outputs (`{ category, explanation }`) with the four-bucket rubric in the system prompt; `MatchCategory` enum exported and threaded through service/router.
+- Ranked list is now a `<Table>` (#, Candidate, Match chip, Similarity, Why). Chip colors: green/yellow/orange/red for strong/good/low/irrelevant.
+
+## 2026-06-13 — Per-candidate one-liner fit explainer (slice-4 step 2)
+**Request:** After the cosine sim, run gpt-5-mini per candidate to produce a ≤15-word fit sentence; lean on OpenAI auto-prompt-cache for the shared JD prefix.
+**Changes:**
+- `features/jobs/match-explainer.ts` + `jobs.explainMatches` tRPC query. System+ROLE block is byte-identical across the batch; we log per-call `cached_tokens` and a batch cache-rate %.
+- Ranker UI fires explainMatches after matches resolves; renders italic one-liner under each candidate name; per-call failures show the error code, others unaffected.
+- Env: `OPENAI_EXPLAIN_MODEL=gpt-5-mini`, `OPENAI_EXPLAIN_TIMEOUT_MS=30000`.
+
+## 2026-06-13 — JD ranker UI + cosine-similarity matches (slice-4 step 1)
+**Request:** Paste a JD, see candidates ranked by embedding similarity to it.
+**Changes:**
+- New `features/jobs/` folder: `job_descriptions` table (vector(3072) in same space as candidates), zod `jobProfileSchema` reusing candidate-side enum const arrays, synchronous ingest (extract + embed + persist in one mutation), and `jobs.matches` query using pgvector `<=>` cosine distance.
+- New `JobDescriptionRanker` component with title input + JD textarea + ranked-list output, similarity % badges color-coded by threshold.
+- Shared `lib/openai.ts`: extracted `getClient`, `mapOpenAiError`, `OpenAiResult`, and a generic `embedText` so both features share the same 3072-dim guard.
+- Migration 0005. New shadcn `ui/input.tsx` + `ui/textarea.tsx` primitives.
+
+---
+
+## 2026-06-12 — Slice-3 hardening: schema split, richer embedding input, recent-role facets
+**Request:** Iterate on slice 3 — fix the strict-outputs bug, drop the embedding-input truncation, redesign extraction_meta, embed richer signal, capture same-craft responsibilities.
+**Changes:**
+- Strict structured-outputs fix: split into `profileModelOutputSchema` (model emits) and `profileSchema` (persisted). All `target: "openAi"` schemas now pass OpenAI's `strict: true` validation.
+- `candidates.profile` is facets-only; new `profile_extraction_meta` jsonb column captures audit fields; `profile_embedding_input` dropped. Migration 0004.
+- `profile-builder.ts` rewritten to newline-separated `key=value` lines with JSON-junk stripping; pulls full experience/education/projects/certifications from raw enrichment.
+- New profile fields: `recent_role_title` + `recent_role_responsibilities` (aggregated from every same-craft prior role; designer/marketing roles filtered out). PROMPT_VERSION → v2.
+- Extraction default model → `gpt-5.4-2026-03-05`. Profile worker concurrency bumped 5 → 20. 30k-char enrichment truncation removed. New `retryFailedProfiles` mutation + button.
+
 ## 2026-06-12 — Faceted profile extraction + embedding (slice-3 step 1)
 **Request:** Build the prep layer for ranking — distill enrichment into faceted profiles and embed them, no ranking yet.
 **Changes:**

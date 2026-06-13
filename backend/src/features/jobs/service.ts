@@ -5,7 +5,7 @@ import { jobDescriptions, type JobDescription } from "./schema.js";
 import { extractJobProfile, embedText } from "./openai.js";
 import { buildJobEmbeddingInput } from "./job-builder.js";
 import { jobProfileSchema, type JobProfile } from "./job-schema.js";
-import { explainMatch } from "./match-explainer.js";
+import { explainMatch, type MatchCategory } from "./match-explainer.js";
 
 export type JobDescriptionListRow = Omit<
   JobDescription,
@@ -221,6 +221,7 @@ export async function findMatchesForJob(
 
 export type ExplanationRow = {
   candidateId: string;
+  category: MatchCategory | null;
   explanation: string | null;
   errorCode?: string;
   promptTokens?: number;
@@ -289,18 +290,29 @@ export async function explainTopMatches(
     if (r.status === "rejected") {
       // Promise.allSettled shouldn't hit here (explainMatch returns
       // OpenAiResult, no throw) but treat defensively.
-      out.push({ candidateId: "?", explanation: null, errorCode: "internal" });
+      out.push({
+        candidateId: "?",
+        category: null,
+        explanation: null,
+        errorCode: "internal",
+      });
       continue;
     }
     const { candidateId, result } = r.value;
     if (!result.ok) {
-      out.push({ candidateId, explanation: null, errorCode: result.code });
+      out.push({
+        candidateId,
+        category: null,
+        explanation: null,
+        errorCode: result.code,
+      });
       continue;
     }
     promptTotal += result.value.promptTokens;
     cacheTotal += result.value.cachedTokens;
     out.push({
       candidateId,
+      category: result.value.category,
       explanation: result.value.explanation,
       promptTokens: result.value.promptTokens,
       cachedTokens: result.value.cachedTokens,

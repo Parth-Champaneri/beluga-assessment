@@ -11,6 +11,14 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type JobProfileFacets = {
   role_title?: string;
@@ -33,17 +41,28 @@ type CandidateProfileFacets = {
   recent_role_title?: string;
 } | null;
 
+type MatchCategory = "strong_match" | "good_match" | "low_match" | "irrelevant";
+
 function formatSimilarity(s: number): string {
   return `${(s * 100).toFixed(1)}%`;
 }
 
-function similarityVariant(
-  s: number,
-): "default" | "secondary" | "outline" | "destructive" {
-  if (s >= 0.7) return "default";
-  if (s >= 0.55) return "secondary";
-  return "outline";
-}
+const CATEGORY_LABEL: Record<MatchCategory, string> = {
+  strong_match: "Strong",
+  good_match: "Good",
+  low_match: "Low",
+  irrelevant: "Irrelevant",
+};
+
+const CATEGORY_CLASS: Record<MatchCategory, string> = {
+  strong_match:
+    "border-transparent bg-green-600 text-white hover:bg-green-600/90",
+  good_match:
+    "border-transparent bg-yellow-500 text-white hover:bg-yellow-500/90",
+  low_match:
+    "border-transparent bg-orange-500 text-white hover:bg-orange-500/90",
+  irrelevant: "border-transparent bg-red-600 text-white hover:bg-red-600/90",
+};
 
 export function JobDescriptionRanker() {
   const [title, setTitle] = useState("");
@@ -79,10 +98,15 @@ export function JobDescriptionRanker() {
 
   const explanationByCandidate = new Map<
     string,
-    { explanation: string | null; errorCode?: string }
+    {
+      category: MatchCategory | null;
+      explanation: string | null;
+      errorCode?: string;
+    }
   >();
   for (const row of explanations.data ?? []) {
     explanationByCandidate.set(row.candidateId, {
+      category: row.category as MatchCategory | null,
       explanation: row.explanation,
       errorCode: row.errorCode,
     });
@@ -99,6 +123,8 @@ export function JobDescriptionRanker() {
   };
 
   const ingestedProfile = (ingest.data?.profile ?? null) as JobProfileFacets;
+  const explainerPending =
+    explanations.isLoading || explanations.isFetching;
 
   return (
     <Card>
@@ -178,41 +204,39 @@ export function JobDescriptionRanker() {
                 enrichment + profile extraction finish.
               </div>
             ) : (
-              <ol className="flex flex-col divide-y">
-                {matches.data.map((m, i) => {
-                  const profile = (m.profile ?? null) as CandidateProfileFacets;
-                  const facetTags = [
-                    profile?.recent_role_title,
-                    profile?.seniority_band,
-                    profile?.stack_orientation,
-                    profile?.archetype,
-                    profile?.track,
-                  ].filter(
-                    (v): v is string =>
-                      typeof v === "string" && v.length > 0 && v !== "unknown",
-                  );
-                  const exp = explanationByCandidate.get(m.id);
-                  const explainerPending =
-                    explanations.isLoading || explanations.isFetching;
-                  return (
-                    <li
-                      key={m.id}
-                      className="flex items-start justify-between gap-3 py-2"
-                    >
-                      <div className="flex min-w-0 flex-1 items-start gap-3">
-                        <span className="w-6 pt-0.5 text-right text-xs text-muted-foreground">
-                          {i + 1}.
-                        </span>
-                        <div className="min-w-0 flex-1">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">#</TableHead>
+                    <TableHead>Candidate</TableHead>
+                    <TableHead className="w-28">Match</TableHead>
+                    <TableHead className="w-24">Similarity</TableHead>
+                    <TableHead>Why</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {matches.data.map((m, i) => {
+                    const profile = (m.profile ?? null) as CandidateProfileFacets;
+                    const facetTags = [
+                      profile?.recent_role_title,
+                      profile?.seniority_band,
+                      profile?.stack_orientation,
+                      profile?.archetype,
+                      profile?.track,
+                    ].filter(
+                      (v): v is string =>
+                        typeof v === "string" &&
+                        v.length > 0 &&
+                        v !== "unknown",
+                    );
+                    const exp = explanationByCandidate.get(m.id);
+                    return (
+                      <TableRow key={m.id} className="align-top">
+                        <TableCell className="text-xs text-muted-foreground">
+                          {i + 1}
+                        </TableCell>
+                        <TableCell>
                           <div className="font-medium">{m.fullName}</div>
-                          <p className="mt-0.5 text-xs italic text-muted-foreground">
-                            {exp?.explanation ??
-                              (exp?.errorCode
-                                ? `— (${exp.errorCode})`
-                                : explainerPending
-                                  ? "computing match…"
-                                  : "—")}
-                          </p>
                           <a
                             href={m.linkedinUrl}
                             target="_blank"
@@ -234,15 +258,41 @@ export function JobDescriptionRanker() {
                               ))}
                             </div>
                           )}
-                        </div>
-                      </div>
-                      <Badge variant={similarityVariant(m.similarity)}>
-                        {formatSimilarity(m.similarity)}
-                      </Badge>
-                    </li>
-                  );
-                })}
-              </ol>
+                        </TableCell>
+                        <TableCell>
+                          {exp?.category ? (
+                            <Badge className={CATEGORY_CLASS[exp.category]}>
+                              {CATEGORY_LABEL[exp.category]}
+                            </Badge>
+                          ) : exp?.errorCode ? (
+                            <span
+                              title={exp.errorCode}
+                              className="font-mono text-xs text-red-600"
+                            >
+                              ✗
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              {explainerPending ? "…" : "—"}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm tabular-nums">
+                          {formatSimilarity(m.similarity)}
+                        </TableCell>
+                        <TableCell className="text-xs italic text-muted-foreground">
+                          {exp?.explanation ??
+                            (exp?.errorCode
+                              ? `— (${exp.errorCode})`
+                              : explainerPending
+                                ? "computing match…"
+                                : "—")}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             )}
           </div>
         )}
