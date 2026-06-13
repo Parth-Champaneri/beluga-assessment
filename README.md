@@ -154,6 +154,4 @@ Full schema with defaults: `backend/src/lib/env.ts`. The useful knobs:
 - **pgvector HNSW index** on `candidates.profile_embedding` once the corpus
   passes a few thousand rows — exact cosine sim is fast at 100-row scale but
   doesn't stay flat.
-- **Per-row retry button** in the UI alongside the existing batch
-  "Retry failed (N)".
 
