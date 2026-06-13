@@ -95,13 +95,21 @@ export function CandidatesTable() {
       onSuccess: invalidateList,
     }),
   );
+  const retryProfiles = useMutation(
+    trpc.candidates.retryFailedProfiles.mutationOptions({
+      onSuccess: invalidateList,
+    }),
+  );
 
   const queuedCount =
     candidates.data?.filter((c) => c.status === "queued").length ?? 0;
   const failedCount =
     candidates.data?.filter((c) => c.status === "failed").length ?? 0;
+  const failedProfileCount =
+    candidates.data?.filter((c) => c.profileStatus === "failed").length ?? 0;
 
-  const anyMutating = nudge.isPending || retry.isPending;
+  const anyMutating =
+    nudge.isPending || retry.isPending || retryProfiles.isPending;
   const now = new Date();
 
   return (
@@ -148,6 +156,15 @@ export function CandidatesTable() {
             {retry.isPending
               ? "Retrying…"
               : `Retry failed (${failedCount})`}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => retryProfiles.mutate()}
+            disabled={anyMutating || failedProfileCount === 0}
+          >
+            {retryProfiles.isPending
+              ? "Retrying…"
+              : `Retry failed profiles (${failedProfileCount})`}
           </Button>
         </div>
       </CardHeader>

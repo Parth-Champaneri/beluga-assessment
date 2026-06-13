@@ -42,7 +42,14 @@ export const ARCHETYPES = [
 
 export const TRACKS = ["ic", "manager", "mixed", "unknown"] as const;
 
-export const profileSchema = z.object({
+/**
+ * What the LLM emits — facets only, no extraction_meta. We override the meta
+ * server-side (the model can't reliably know its own id, prompt version,
+ * token counts, or whether we truncated its input). Keeping it out of the
+ * model's contract also avoids OpenAI's strict-structured-outputs rule that
+ * every property must be in `required` — our meta fields are optional.
+ */
+export const profileModelOutputSchema = z.object({
   seniority_band: z.enum(SENIORITY_BANDS),
   stack_orientation: z.enum(STACK_ORIENTATIONS),
   company_stage_exposure: z.array(z.enum(COMPANY_STAGES)).max(3),
@@ -54,6 +61,9 @@ export const profileSchema = z.object({
   track: z.enum(TRACKS),
   key_skills: z.array(z.string()).max(10),
   summary: z.string().min(1).max(800),
+});
+
+export const profileSchema = profileModelOutputSchema.extend({
   extraction_meta: z.object({
     model: z.string(),
     prompt_version: z.string(),
@@ -64,18 +74,21 @@ export const profileSchema = z.object({
   }),
 });
 
+export type ProfileModelOutput = z.infer<typeof profileModelOutputSchema>;
 export type Profile = z.infer<typeof profileSchema>;
 
 /** Bump when the prompt or schema shape changes so old rows can be re-extracted. */
 export const PROMPT_VERSION = "v1";
 
-const raw = zodToJsonSchema(profileSchema, {
-  name: "candidate_profile",
+/**
+ * JSON Schema fed to OpenAI's structured outputs. `target: "openAi"` emits
+ * a draft-2019-09 schema with `additionalProperties: false` and every
+ * property in `required` — exactly what strict mode demands.
+ */
+export const profileJsonSchema = zodToJsonSchema(profileModelOutputSchema, {
+  target: "openAi",
   $refStrategy: "none",
 });
-export const profileJsonSchema = (
-  raw as { definitions: { candidate_profile: unknown } }
-).definitions.candidate_profile;
 
 export const SYSTEM_PROMPT = `You extract a role-agnostic structured profile from a candidate's raw LinkedIn enrichment JSON. Output must conform to the provided JSON schema exactly.
 

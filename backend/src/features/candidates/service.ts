@@ -105,6 +105,19 @@ export async function retryFailed(
 }
 
 /**
+ * Same idea as retryFailed but for profile_jobs — typically used after
+ * a prompt/schema fix to re-run extraction on every candidate that
+ * previously hit a permanent error.
+ */
+export async function retryFailedProfiles(
+  ctx: Context,
+): Promise<{ reset: number }> {
+  const reset = await profileJobsRepo.resetFailedToQueued(ctx.db);
+  console.log(`[retry] reset ${reset} failed profile job(s) to queued`);
+  return { reset };
+}
+
+/**
  * Apply a Clay callback. Writes the enrichment payload to `candidates` AND
  * flips the matched job to `done` in a single transaction.
  *

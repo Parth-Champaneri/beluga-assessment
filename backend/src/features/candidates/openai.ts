@@ -2,6 +2,7 @@ import OpenAI, { APIError } from "openai";
 import { env } from "../../lib/env.js";
 import {
   profileSchema,
+  profileModelOutputSchema,
   profileJsonSchema,
   SYSTEM_PROMPT,
   PROMPT_VERSION,
@@ -137,26 +138,24 @@ export async function extractProfile(
     return { ok: false, code: "validation_failed", message: msg };
   }
 
-  // We override extraction_meta server-side: the model can't reliably
-  // know its own model id, prompt version, wall-clock time, or whether
-  // we truncated its input — those are facts only the caller has.
-  const merged = {
-    ...(parsed as Record<string, unknown>),
-    extraction_meta: {
-      ...(parsed as { extraction_meta?: Record<string, unknown> })
-        .extraction_meta,
-      model: env.OPENAI_EXTRACTION_MODEL,
-      prompt_version: PROMPT_VERSION,
-      extracted_at: new Date().toISOString(),
-      prompt_tokens: completion.usage?.prompt_tokens,
-      completion_tokens: completion.usage?.completion_tokens,
-      truncated_input: truncatedInput,
-    },
-  };
-
+  // First validate the model's output (facets only). extraction_meta is
+  // attached server-side — the model's contract excludes it so OpenAI's
+  // strict structured-outputs mode is happy (all properties required +
+  // additionalProperties: false).
   let profile: Profile;
   try {
-    profile = profileSchema.parse(merged);
+    const modelOutput = profileModelOutputSchema.parse(parsed);
+    profile = profileSchema.parse({
+      ...modelOutput,
+      extraction_meta: {
+        model: env.OPENAI_EXTRACTION_MODEL,
+        prompt_version: PROMPT_VERSION,
+        extracted_at: new Date().toISOString(),
+        prompt_tokens: completion.usage?.prompt_tokens,
+        completion_tokens: completion.usage?.completion_tokens,
+        truncated_input: truncatedInput,
+      },
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message.slice(0, 500) : String(err);
     console.error(`[openai] ✗ extract code=validation_failed msg=${msg}`);
