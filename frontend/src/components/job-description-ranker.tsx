@@ -65,6 +65,29 @@ export function JobDescriptionRanker() {
     ),
   });
 
+  const explanations = useQuery({
+    ...trpc.jobs.explainMatches.queryOptions(
+      { jobId: jobId ?? "", limit: 50 },
+      {
+        // Only fire after matches has resolved with data — running both
+        // queries in parallel would double-cost the first explainer pass
+        // (cache window not yet warm).
+        enabled: jobId !== null && (matches.data?.length ?? 0) > 0,
+      },
+    ),
+  });
+
+  const explanationByCandidate = new Map<
+    string,
+    { explanation: string | null; errorCode?: string }
+  >();
+  for (const row of explanations.data ?? []) {
+    explanationByCandidate.set(row.candidateId, {
+      explanation: row.explanation,
+      errorCode: row.errorCode,
+    });
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (descriptionText.trim().length < 20) return;
@@ -168,17 +191,28 @@ export function JobDescriptionRanker() {
                     (v): v is string =>
                       typeof v === "string" && v.length > 0 && v !== "unknown",
                   );
+                  const exp = explanationByCandidate.get(m.id);
+                  const explainerPending =
+                    explanations.isLoading || explanations.isFetching;
                   return (
                     <li
                       key={m.id}
-                      className="flex items-center justify-between gap-3 py-2"
+                      className="flex items-start justify-between gap-3 py-2"
                     >
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <span className="w-6 text-right text-xs text-muted-foreground">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <span className="w-6 pt-0.5 text-right text-xs text-muted-foreground">
                           {i + 1}.
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="font-medium">{m.fullName}</div>
+                          <p className="mt-0.5 text-xs italic text-muted-foreground">
+                            {exp?.explanation ??
+                              (exp?.errorCode
+                                ? `— (${exp.errorCode})`
+                                : explainerPending
+                                  ? "computing match…"
+                                  : "—")}
+                          </p>
                           <a
                             href={m.linkedinUrl}
                             target="_blank"

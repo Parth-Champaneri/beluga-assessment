@@ -4,6 +4,8 @@ import type { Context } from "../../trpc/context.js";
 import { jobDescriptions, type JobDescription } from "./schema.js";
 import { extractJobProfile, embedText } from "./openai.js";
 import { buildJobEmbeddingInput } from "./job-builder.js";
+import { jobProfileSchema, type JobProfile } from "./job-schema.js";
+import { explainMatch } from "./match-explainer.js";
 
 export type JobDescriptionListRow = Omit<
   JobDescription,
@@ -215,4 +217,102 @@ export async function findMatchesForJob(
     profileStatus: r.profile_status,
     similarity: Number(r.similarity),
   }));
+}
+
+export type ExplanationRow = {
+  candidateId: string;
+  explanation: string | null;
+  errorCode?: string;
+  promptTokens?: number;
+  cachedTokens?: number;
+  completionTokens?: number;
+};
+
+/**
+ * Generate one-liner fit explanations for the top-N matches against a JD.
+ * Runs gpt-5-mini in parallel via Promise.allSettled — per-candidate
+ * failures don't poison the rest of the batch.
+ *
+ * Caching note: the prompt is laid out so the JD-side content is the
+ * leading prefix across all calls in a batch. OpenAI's auto-cache picks
+ * this up when the prefix exceeds ~1024 tokens and the calls land within
+ * a ~5min window. Per-call `cachedTokens` is surfaced so the caller can
+ * verify hit rate.
+ */
+export async function explainTopMatches(
+  ctx: Context,
+  input: { jobId: string; limit?: number },
+): Promise<ExplanationRow[]> {
+  const limit = Math.min(Math.max(input.limit ?? 50, 1), 50);
+
+  const jdRows = await ctx.db
+    .select({
+      id: jobDescriptions.id,
+      profile: jobDescriptions.profile,
+    })
+    .from(jobDescriptions)
+    .where(eq(jobDescriptions.id, input.jobId))
+    .limit(1);
+  const jd = jdRows[0];
+  if (!jd) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "job description not found",
+    });
+  }
+
+  let jdProfile: JobProfile;
+  try {
+    jdProfile = jobProfileSchema.parse(jd.profile);
+  } catch (err) {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: `job profile invalid: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+
+  const matches = await findMatchesForJob(ctx, { jobId: input.jobId, limit });
+
+  const results = await Promise.allSettled(
+    matches.map((m) =>
+      explainMatch(jdProfile, m.profile, m.fullName).then((r) => ({
+        candidateId: m.id,
+        result: r,
+      })),
+    ),
+  );
+
+  let cacheTotal = 0;
+  let promptTotal = 0;
+  const out: ExplanationRow[] = [];
+  for (const r of results) {
+    if (r.status === "rejected") {
+      // Promise.allSettled shouldn't hit here (explainMatch returns
+      // OpenAiResult, no throw) but treat defensively.
+      out.push({ candidateId: "?", explanation: null, errorCode: "internal" });
+      continue;
+    }
+    const { candidateId, result } = r.value;
+    if (!result.ok) {
+      out.push({ candidateId, explanation: null, errorCode: result.code });
+      continue;
+    }
+    promptTotal += result.value.promptTokens;
+    cacheTotal += result.value.cachedTokens;
+    out.push({
+      candidateId,
+      explanation: result.value.explanation,
+      promptTokens: result.value.promptTokens,
+      cachedTokens: result.value.cachedTokens,
+      completionTokens: result.value.completionTokens,
+    });
+  }
+
+  const cacheRate =
+    promptTotal > 0 ? ((cacheTotal / promptTotal) * 100).toFixed(1) : "0.0";
+  console.log(
+    `[explain] batch jobId=${input.jobId} candidates=${matches.length} cache=${cacheTotal}/${promptTotal} (${cacheRate}%)`,
+  );
+
+  return out;
 }
