@@ -61,6 +61,23 @@ export const profileSchema = z.object({
   track: z.enum(TRACKS),
   key_skills: z.array(z.string()).max(10),
   summary: z.string().min(1).max(800),
+  /**
+   * The candidate's most recent / current job title, lowercased, lightly
+   * normalized (drop suffixes like "II", "Sr.", trim "@ company"). Used
+   * to scope the responsibilities list below and to make the embedding
+   * carry the role identity, not just the seniority band.
+   */
+  recent_role_title: z.string().max(120),
+  /**
+   * Responsibilities, duties, projects, and achievements aggregated from
+   * EVERY role in the candidate's history whose title matches or is
+   * closely related to recent_role_title — e.g. for "software engineer"
+   * pull from prior "senior software engineer", "backend engineer",
+   * "software developer" roles. Exclude unrelated roles (designer,
+   * marketing, founder unless that founder role was the same craft).
+   * Each entry is one short bullet (one sentence is ideal).
+   */
+  recent_role_responsibilities: z.array(z.string().max(400)).max(30),
 });
 
 /**
@@ -79,7 +96,7 @@ export type Profile = z.infer<typeof profileSchema>;
 export type ExtractionMeta = z.infer<typeof extractionMetaSchema>;
 
 /** Bump when the prompt or schema shape changes so old rows can be re-extracted. */
-export const PROMPT_VERSION = "v1";
+export const PROMPT_VERSION = "v2";
 
 /**
  * JSON Schema fed to OpenAI's structured outputs. `target: "openAi"` emits
@@ -110,7 +127,18 @@ key_skills: up to 10 short skill/technology names drawn from the enrichment.
 
 years_experience is an integer (0-80) or null when it cannot be reasonably estimated.
 
+recent_role_title: the candidate's most recent / current job title, lowercased and lightly normalized — drop seniority modifiers ("sr.", "senior", "lead", "ii", "iii"), drop "@ company" suffixes, but keep the craft ("software engineer", "product designer", "data scientist"). Empty string ONLY if no title can be determined.
+
+recent_role_responsibilities: a deduplicated bullet list of responsibilities, duties, projects, technologies used, and quantified achievements. Scope rules:
+- Start from the candidate's most recent role.
+- ALSO include responsibilities from EVERY earlier role whose title is the same craft as recent_role_title. "Software engineer" matches "senior software engineer", "backend engineer", "software developer", "full-stack engineer". It does NOT match "product designer", "marketing manager", "founder" (unless the founder description shows the same craft work).
+- EXCLUDE roles in unrelated fields even if they appear in the history.
+- Scan the ENTIRE enrichment payload — experience descriptions, project descriptions, accomplishments fields, about/summary text — and pull bullets from anywhere that describes craft work performed during a matching role.
+- Each entry is one short factual sentence, present tense, no first-person ("Built X", "Owned Y", "Reduced Z by 40%"). Strip company names and dates from the bullet — those belong in the experience field, not here.
+- Up to 30 entries. If the candidate's history is small, fewer is fine.
+- Empty array only if the enrichment has no matching responsibilities at all.
+
 Rules:
-- When a field cannot be confidently determined from the enrichment, emit "unknown" for enums, [] for arrays, or null for years_experience. Never fabricate.
+- When a field cannot be confidently determined from the enrichment, emit "unknown" for enums, [] for arrays, "" for recent_role_title, or null for years_experience. Never fabricate.
 - Be role-agnostic. Do not score, rank, or judge fit for any role. The output describes the candidate, not their fit.
-- Do not invent companies, titles, or skills that are not present in the input.`;
+- Do not invent companies, titles, skills, or responsibilities that are not present in the input.`;

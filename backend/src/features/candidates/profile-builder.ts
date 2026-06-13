@@ -181,6 +181,16 @@ export function buildEmbeddingInput(
     pushKV(lines, "key_skills", profile.key_skills.map(stripJunk).join(" "));
   }
   pushKV(lines, "summary", stripJunk(profile.summary));
+  if (profile.recent_role_title.trim().length > 0) {
+    pushKV(lines, "recent_role_title", stripJunk(profile.recent_role_title));
+  }
+  if (profile.recent_role_responsibilities.length > 0) {
+    pushKV(
+      lines,
+      "recent_role_responsibilities",
+      profile.recent_role_responsibilities.map(stripJunk).join("; "),
+    );
+  }
 
   // Enrichment-derived fields — defensive against missing/varying shapes.
   if (enrichment && typeof enrichment === "object") {
