@@ -1,5 +1,7 @@
 # Beluga Assessment
 
+Demo video: https://youtu.be/zpEhc-URBD0
+
 LinkedIn-candidate ranker. Upload a CSV → enrich via Clay → distill each
 candidate into a faceted profile + embedding → paste a job description and
 see candidates ranked by semantic match with a color-coded fit category and
